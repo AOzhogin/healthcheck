@@ -123,6 +123,7 @@ func (h *healthCheck) Start() {
 func (h *healthCheck) Shutdown() {
 
 	if h.routine {
+		h.isWorked = false
 		h.wg.Wait()
 	}
 
