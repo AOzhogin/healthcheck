@@ -106,6 +106,8 @@ WithTimeOut(timeout time.Duration) - set global checkers time out
 
 WithMetrics(buildInfo, goCollector, processCollector bool) - collect prometheus metrics
 
+WithMetricsRegistry(r *prometheus.Registry) - collect prometheus metrics with external registry
+
 WithBackCheck(interval time.Duration) - check in routine
 
 WithCheckStatusSuccess(status string) - set string status when check is success, default "ok"

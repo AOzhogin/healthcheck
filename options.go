@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"sync"
 	"time"
@@ -27,6 +28,13 @@ func WithErrorStatus(status int) HCOption {
 func WithTimeOut(timeout time.Duration) HCOption {
 	return func(check *healthCheck) {
 		check.timeOut = timeout
+	}
+}
+
+// WithMetricsRegistry - collect prometheus metrics with external registry
+func WithMetricsRegistry(r *prometheus.Registry) HCOption {
+	return func(check *healthCheck) {
+		check.Metrics = NewMetricsWithRegistry(r)
 	}
 }
 

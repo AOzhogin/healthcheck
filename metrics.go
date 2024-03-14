@@ -37,6 +37,17 @@ type metrics struct {
 	registry *prometheus.Registry
 }
 
+func NewMetricsWithRegistry(r *prometheus.Registry) *metrics {
+
+	m := &metrics{
+		mm:       make(map[string]prometheus.Collector),
+		registry: r,
+	}
+
+	return m
+
+}
+
 func NewMetrics(buildInfo, goCollector, processCollector bool) *metrics {
 
 	m := &metrics{
