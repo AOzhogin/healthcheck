@@ -21,10 +21,10 @@ func (h *healthCheck) HandlerHealth(w http.ResponseWriter, r *http.Request) {
 		res = h.check()
 	}
 
+	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(res.code)
 
 	if r.URL.Query().Get("body") == "true" {
-		w.Header().Add("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(res); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			var r = resultError{
