@@ -39,6 +39,14 @@ type (
 	}
 )
 
+func newErrorResult(err error) *resultError {
+	return &resultError{
+		Status: "error",
+		Error:  err.Error(),
+		Checks: any(""),
+	}
+}
+
 func newCheckList() checkList {
 	return checkList{
 		List:  make(map[string]CheckContext),

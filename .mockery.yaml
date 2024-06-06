@@ -1,0 +1,10 @@
+with-expecter: true
+disable-version-string: True
+filename: "mock_{{.InterfaceName}}.go"
+mockname: "Mock{{.InterfaceName}}"
+dir: "{{.InterfaceDir}}/mocks"
+dry-run: true
+packages:
+  github.com/AOzhogin/healthcheck:
+    config:
+      all: true

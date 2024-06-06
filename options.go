@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"context"
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"sync"
@@ -55,6 +56,13 @@ func WithBackCheck(interval time.Duration) HCOption {
 			Status: checkStatusError,
 		}
 		check.wg = sync.WaitGroup{}
+	}
+}
+
+// WithContext - set self context
+func WithContext(ctx context.Context) HCOption {
+	return func(check *healthCheck) {
+		check.ctx = ctx
 	}
 }
 
