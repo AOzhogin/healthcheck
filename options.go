@@ -17,14 +17,14 @@ func WithSuccessStatus(status int) HCOption {
 	}
 }
 
-// WithErrorStatus - set status code when any one checkers is failed
+// WithErrorStatus - set status code when any one checker fails
 func WithErrorStatus(status int) HCOption {
 	return func(check *healthCheck) {
 		check.statusCodeError = status
 	}
 }
 
-// WithTimeOut - set global checkers time out
+// WithTimeOut - set global checkers timeout
 func WithTimeOut(timeout time.Duration) HCOption {
 	return func(check *healthCheck) {
 		check.timeOut = timeout
@@ -45,7 +45,7 @@ func WithMetrics(buildInfo, goCollector, processCollector bool) HCOption {
 	}
 }
 
-// WithBackCheck - check in routine
+// WithBackCheck - run checks in a background routine
 func WithBackCheck(interval time.Duration) HCOption {
 	return func(check *healthCheck) {
 		check.routine = true
@@ -58,7 +58,7 @@ func WithBackCheck(interval time.Duration) HCOption {
 	}
 }
 
-// WithCheckStatusSuccess - set string status when check is success, default "ok"
+// WithCheckStatusSuccess - set string status when check is successful, default "ok"
 func WithCheckStatusSuccess(status string) HCOption {
 	return func(check *healthCheck) {
 		check.checkStatusSuccess = status
@@ -69,5 +69,12 @@ func WithCheckStatusSuccess(status string) HCOption {
 func WithCheckStatusError(status string) HCOption {
 	return func(check *healthCheck) {
 		check.checkStatusError = status
+	}
+}
+
+// WithPort - set port for HTTP server
+func WithPort(port int) HCOption {
+	return func(check *healthCheck) {
+		check.port = port
 	}
 }

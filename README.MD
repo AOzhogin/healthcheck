@@ -26,6 +26,7 @@ go get -u github.com/AOzhogin/healthcheck
 ```go
 // initialize
 hc := healthcheck.New(
+    healthcheck.WithPort(8081), // custom port
     healthcheck.WithMetrics(false, false, false),
     healthcheck.WithBackCheck(5*time.Second),
 )
@@ -34,18 +35,15 @@ hc := healthcheck.New(
 hc.Add("db", // health check name
        "db.company:1521", // notes
        func(ctx context.Context) error {
-	// you check here
-})
+           // your check here
+           return nil
+       },
+)
 
-// initialize mux server
-mux := http.NewServeMux()
-
-// add handlers
-mux.HandleFunc(healthcheck.HandlerHealthCheck, hc.HandlerHealth)
-mux.HandleFunc(healthcheck.HandlerMetrics, hc.HandlerMetrics)
-
-// start http server
-http.ListenAndServe(":8080", mux)
+// start HTTP server (handlers registered automatically)
+if err := hc.StartHTTPServer(); err != nil {
+    panic(err)
+}
 ```
 
 ### Request with response
@@ -98,32 +96,22 @@ HandlerStartup     = "/startup"
 #### Options
 
 ```go
-WithSuccessStatus(status int) - set success status code
-
-WithErrorStatus(status int) - set status code when any one checkers is failed
-
-WithTimeOut(timeout time.Duration) - set global checkers time out
-
-WithMetrics(buildInfo, goCollector, processCollector bool) - collect prometheus metrics
-
-WithMetricsRegistry(r *prometheus.Registry) - collect prometheus metrics with external registry
-
-WithBackCheck(interval time.Duration) - check in routine
-
-WithCheckStatusSuccess(status string) - set string status when check is success, default "ok"
-
-WithCheckStatusError(status string) - set string status when check is error, default "error"
+WithSuccessStatus(status int)           // set HTTP status code for successful checks (default: 200)
+WithErrorStatus(status int)             // set HTTP status code when any checker fails (default: 503)
+WithTimeOut(timeout time.Duration)      // set global timeout for all checkers (default: 30s)
+WithMetrics(buildInfo, goCollector, processCollector bool) // enable Prometheus metrics
+WithMetricsRegistry(r *prometheus.Registry) // use external Prometheus registry for metrics
+WithBackCheck(interval time.Duration)   // run checks in background with specified interval
+WithCheckStatusSuccess(status string)   // set string status for successful check (default: "ok")
+WithCheckStatusError(status string)     // set string status for failed check (default: "error")
+WithPort(port int)                      // set HTTP server port (default: 8080)
 ```
 
 ### Metrics
 
-With option "WithMetrics" you can use metrics handler for Prometheus
-Option include configuration:
+Prometheus metrics examples
 
-##### main health check metrics
-
-gauge - when 0 is check have error and 1 when check is ok
-histogram - with timeout execution
+#### main health check metrics example
 
 ```
 # HELP healthcheck_metrics_db Checking available db
@@ -147,7 +135,7 @@ healthcheck_metrics_db_dur_sum 0.094148065
 healthcheck_metrics_db_dur_count 1
 ```
 
-##### buildInfo
+#### buildInfo example
 
 ```
 # HELP go_build_info Build information about the main Go module.
@@ -155,7 +143,7 @@ healthcheck_metrics_db_dur_count 1
 go_build_info{checksum="",path="",version=""} 1
 ```
 
-##### goCollector
+#### goCollector example
 
 ```
 # HELP go_gc_duration_seconds A summary of the pause duration of garbage collection cycles.
@@ -247,7 +235,7 @@ go_memstats_sys_bytes 7.707664e+06
 go_threads 7
 ```
 
-##### processCollector
+#### processCollector example
 
 ```
 # HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
@@ -272,3 +260,7 @@ process_virtual_memory_bytes 1.645735936e+09
 # TYPE process_virtual_memory_max_bytes gauge
 process_virtual_memory_max_bytes 1.8446744073709552e+19
 ```
+
+</details>
+
+</details>
