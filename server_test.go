@@ -1,7 +1,6 @@
 package healthcheck
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"testing"
