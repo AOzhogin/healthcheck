@@ -10,10 +10,10 @@ import (
 )
 
 func TestWithPort(t *testing.T) {
-	h := &healthCheck{port: 8080}
-	WithPort(9090)(h)
-	if h.port != 9090 {
-		t.Errorf("expected port 9090, got %d", h.port)
+	h := &healthCheck{port: ":8080"}
+	WithPort(":9090")(h)
+	if h.port != ":9090" {
+		t.Errorf("expected port :9090, got %s", h.port)
 	}
 }
 
