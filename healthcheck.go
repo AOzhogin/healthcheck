@@ -41,6 +41,7 @@ type healthCheck struct {
 	isWorked           bool
 	wg                 sync.WaitGroup
 	Metrics
+	port int // port for HTTP server
 }
 
 func New(ops ...HCOption) HealthCheck {
@@ -55,6 +56,7 @@ func New(ops ...HCOption) HealthCheck {
 		checkStatusError:   checkStatusError,
 		cacheMutex:         sync.Mutex{},
 		isWorked:           true,
+		port:               8080, // default value
 	}
 
 	for _, option := range ops {
@@ -163,7 +165,9 @@ func (h *healthCheck) check() checkResults {
 		r.Result = ""
 
 		if h.withMetrics() {
-			h.Metrics.Save(name, execTime.Seconds(), err)
+			if err := h.Metrics.Save(name, execTime.Seconds(), err); err != nil {
+				fmt.Printf("error saving metric: %v \n", err)
+			}
 		}
 
 		if err != nil {
@@ -183,4 +187,15 @@ func (h *healthCheck) check() checkResults {
 
 	return res
 
+}
+
+// StartHTTPServer starts the HTTP server on the default port 8080, unless another port is set via options
+func (h *healthCheck) StartHTTPServer() error {
+	mux := http.NewServeMux()
+	mux.HandleFunc(HandlerHealthCheck, h.HandlerHealth)
+	if h.Metrics != nil {
+		mux.HandleFunc(HandlerMetrics, h.HandlerMetrics)
+	}
+	addr := fmt.Sprintf(":%d", h.port)
+	return http.ListenAndServe(addr, mux)
 }
