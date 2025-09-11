@@ -166,7 +166,7 @@ func (h *healthCheck) check() checkResults {
 
 		if h.withMetrics() {
 			if err := h.Metrics.Save(name, execTime.Seconds(), err); err != nil {
-				fmt.Printf("error saving metric: %w \n", err)
+				fmt.Printf("error saving metric: %v \n", err)
 			}
 		}
 

@@ -29,11 +29,11 @@ func TestHTTPServer_CustomConfig(t *testing.T) {
 		WithCheckStatusSuccess("GOOD"),
 		WithCheckStatusError("FAIL"),
 	).(*healthCheck)
-	go func() {
+	go func(t *testing.T) {
 		if err := h.StartHTTPServer(); err != http.ErrServerClosed {
-			t.Fatalf("failed to start HTTP server: %w", err)
+			panic(err)
 		}
-	}()
+	}(t)
 	time.Sleep(100 * time.Millisecond)
 	resp, err := http.Get("http://localhost:18080/health?body=true")
 	if err != nil {
