@@ -30,7 +30,9 @@ func TestHTTPServer_CustomConfig(t *testing.T) {
 		WithCheckStatusError("FAIL"),
 	).(*healthCheck)
 	go func() {
-		h.StartHTTPServer()
+		if err := h.StartHTTPServer(); err != http.ErrServerClosed {
+			t.Fatalf("failed to start HTTP server: %w", err)
+		}
 	}()
 	time.Sleep(100 * time.Millisecond)
 	resp, err := http.Get("http://localhost:18080/health?body=true")
@@ -49,4 +51,4 @@ func TestHTTPServer_CustomConfig(t *testing.T) {
 
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) && (contains(s[1:], substr) || contains(s[:len(s)-1], substr))))
-} 
+}

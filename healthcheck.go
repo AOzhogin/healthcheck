@@ -41,7 +41,7 @@ type healthCheck struct {
 	isWorked           bool
 	wg                 sync.WaitGroup
 	Metrics
-	port               int // port for HTTP server
+	port int // port for HTTP server
 }
 
 func New(ops ...HCOption) HealthCheck {
@@ -165,7 +165,9 @@ func (h *healthCheck) check() checkResults {
 		r.Result = ""
 
 		if h.withMetrics() {
-			h.Metrics.Save(name, execTime.Seconds(), err)
+			if err := h.Metrics.Save(name, execTime.Seconds(), err); err != nil {
+				fmt.Printf("error saving metric: %w \n", err)
+			}
 		}
 
 		if err != nil {
