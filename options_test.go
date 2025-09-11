@@ -1,11 +1,12 @@
 package healthcheck
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestWithPort(t *testing.T) {
@@ -85,7 +86,7 @@ func TestWithCheckStatusError(t *testing.T) {
 }
 
 func TestStartHTTPServer(t *testing.T) {
-	h := &healthCheck{port: 0} // порт не важен, используем httptest
+	h := New().(*healthCheck) // используем конструктор для правильной инициализации
 	ts := httptest.NewServer(http.HandlerFunc(h.HandlerHealth))
 	defer ts.Close()
 
@@ -96,4 +97,4 @@ func TestStartHTTPServer(t *testing.T) {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("unexpected status code: got %d", resp.StatusCode)
 	}
-} 
+}
