@@ -26,7 +26,7 @@ func TestHTTPServer_DefaultConfig(t *testing.T) {
 
 func TestHTTPServer_CustomConfig(t *testing.T) {
 	h := New(
-		WithPort(18080),
+		WithPort(":18080"),
 		WithSuccessStatus(201),
 		WithCheckStatusSuccess("GOOD"),
 		WithCheckStatusError("FAIL"),

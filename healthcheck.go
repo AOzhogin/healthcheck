@@ -23,6 +23,7 @@ type HealthCheck interface {
 
 	HandlerHealth(w http.ResponseWriter, r *http.Request)
 	HandlerMetrics(w http.ResponseWriter, r *http.Request)
+	StartHTTPServer() error
 
 	Add(name string, notes string, e HCFunc) error
 }
@@ -41,7 +42,7 @@ type healthCheck struct {
 	isWorked           bool
 	wg                 sync.WaitGroup
 	Metrics
-	port int // port for HTTP server
+	port string // port for HTTP server
 }
 
 func New(ops ...HCOption) HealthCheck {
@@ -56,7 +57,7 @@ func New(ops ...HCOption) HealthCheck {
 		checkStatusError:   checkStatusError,
 		cacheMutex:         sync.Mutex{},
 		isWorked:           true,
-		port:               8080, // default value
+		port:               ":8080", // default value
 	}
 
 	for _, option := range ops {
@@ -196,6 +197,5 @@ func (h *healthCheck) StartHTTPServer() error {
 	if h.Metrics != nil {
 		mux.HandleFunc(HandlerMetrics, h.HandlerMetrics)
 	}
-	addr := fmt.Sprintf(":%d", h.port)
-	return http.ListenAndServe(addr, mux)
+	return http.ListenAndServe(h.port, mux)
 }

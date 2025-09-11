@@ -1,10 +1,11 @@
 package healthcheck
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // HCOption - option type for configuration health check
@@ -73,7 +74,7 @@ func WithCheckStatusError(status string) HCOption {
 }
 
 // WithPort - set port for HTTP server
-func WithPort(port int) HCOption {
+func WithPort(port string) HCOption {
 	return func(check *healthCheck) {
 		check.port = port
 	}
