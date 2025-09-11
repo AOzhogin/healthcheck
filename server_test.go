@@ -1,7 +1,7 @@
 package healthcheck
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -10,7 +10,9 @@ import (
 func TestHTTPServer_DefaultConfig(t *testing.T) {
 	h := New().(*healthCheck)
 	go func() {
-		h.StartHTTPServer()
+		if err := h.StartHTTPServer(); err != http.ErrServerClosed {
+			panic(err)
+		}
 	}()
 	time.Sleep(100 * time.Millisecond)
 	resp, err := http.Get("http://localhost:8080/health?body=true")
@@ -43,7 +45,7 @@ func TestHTTPServer_CustomConfig(t *testing.T) {
 		t.Errorf("expected status 201, got %d", resp.StatusCode)
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	if string(body) == "" || (string(body) != "" && !(contains(string(body), "GOOD") || contains(string(body), "FAIL"))) {
 		t.Errorf("expected body to contain custom status strings, got: %s", string(body))
 	}
