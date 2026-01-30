@@ -87,3 +87,20 @@ func WithPort(port string) HCOption {
 		check.port = port
 	}
 }
+
+// WithBasicAuth enables HTTP Basic Auth for /health, /metrics, and /debug endpoints.
+// If username is empty, Basic Auth is disabled.
+func WithBasicAuth(username, password string) HCOption {
+	return func(check *healthCheck) {
+		check.basicAuthUser = username
+		check.basicAuthPass = password
+	}
+}
+
+// WithMiddleware sets a custom middleware applied to /health, /metrics, and /debug in StartHTTPServer.
+// The middleware runs before Basic Auth (if enabled). Pass nil to disable.
+func WithMiddleware(mw func(http.Handler) http.Handler) HCOption {
+	return func(check *healthCheck) {
+		check.customMiddleware = mw
+	}
+}
