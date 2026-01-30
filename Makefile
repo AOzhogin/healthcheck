@@ -5,7 +5,12 @@ test:
 	go vet ./...
 	go test -v -cover ./...
 
+lint:
+	golangci-lint run ./...
+
+ci: test lint
+
 mocks:
 	@mockery
 
-.PHONY: test
+.PHONY: test lint ci mocks

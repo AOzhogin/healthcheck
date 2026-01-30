@@ -45,9 +45,9 @@ func TestHTTPServer_CustomConfig(t *testing.T) {
 	if resp.StatusCode != 201 {
 		t.Errorf("expected status 201, got %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
-	if string(body) == "" || (string(body) != "" && !(contains(string(body), "GOOD") || contains(string(body), "FAIL"))) {
+	if string(body) == "" || (!contains(string(body), "GOOD") && !contains(string(body), "FAIL")) {
 		t.Errorf("expected body to contain custom status strings, got: %s", string(body))
 	}
 }

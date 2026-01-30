@@ -80,11 +80,11 @@ func (h *healthCheck) Add(name string, notes string, e HCFunc) error {
 
 	var err error
 
-	h.checks.Lock()
-	defer h.checks.Unlock()
+	h.checks.Mutex.Lock()
+	defer h.checks.Mutex.Unlock()
 
 	if h.withMetrics() {
-		err = h.Metrics.Register(name)
+		err = h.Register(name)
 		if err != nil {
 			return err
 		}
@@ -150,8 +150,8 @@ func (h *healthCheck) Shutdown() {
 // check - main proc with process all checks
 func (h *healthCheck) check() checkResults {
 
-	h.checks.Lock()
-	defer h.checks.Unlock()
+	h.checks.Mutex.Lock()
+	defer h.checks.Mutex.Unlock()
 
 	ctx, done := context.WithTimeout(h.ctx, h.timeOut)
 	defer done()
@@ -181,7 +181,7 @@ func (h *healthCheck) check() checkResults {
 		r.Result = ""
 
 		if h.withMetrics() {
-			if err := h.Metrics.Save(name, execTime.Seconds(), err); err != nil {
+			if err := h.Save(name, execTime.Seconds(), err); err != nil {
 				fmt.Printf("error saving metric: %v \n", err)
 			}
 		}

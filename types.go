@@ -28,8 +28,8 @@ type (
 	}
 
 	checkList struct {
-		List map[string]CheckContext
-		sync.Mutex
+		List  map[string]CheckContext
+		Mutex sync.Mutex
 	}
 
 	resultError struct {
@@ -49,7 +49,6 @@ func newErrorResult(err error) *resultError {
 
 func newCheckList() checkList {
 	return checkList{
-		List:  make(map[string]CheckContext),
-		Mutex: sync.Mutex{},
+		List: make(map[string]CheckContext),
 	}
 }

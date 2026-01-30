@@ -27,21 +27,21 @@ func Test_healthCheck_HandlerHealth(t *testing.T) {
 		{name: "With custom success code", args: args{Options: []HCOption{WithSuccessStatus(http.StatusCreated)}}, want: want{status: http.StatusCreated}},
 		{name: "Normal error 503", args: args{Options: nil,
 			CheckFN: func(h HealthCheck) {
-				h.Add("fail test", "always error check", func(ctx context.Context) error {
+				_ = h.Add("fail test", "always error check", func(ctx context.Context) error {
 					return fmt.Errorf("error")
 				})
 			},
 		}, want: want{status: http.StatusServiceUnavailable}},
 		{name: "With custom error 500", args: args{Options: []HCOption{WithErrorStatus(http.StatusInternalServerError)},
 			CheckFN: func(h HealthCheck) {
-				h.Add("fail test", "always error check", func(ctx context.Context) error {
+				_ = h.Add("fail test", "always error check", func(ctx context.Context) error {
 					return fmt.Errorf("error")
 				})
 			},
 		}, want: want{status: http.StatusInternalServerError}},
 		{name: "Check time out", args: args{Options: []HCOption{WithTimeOut(2 * time.Second)},
 			CheckFN: func(h HealthCheck) {
-				h.Add("fail test", "long time check", func(ctx context.Context) error {
+				_ = h.Add("fail test", "long time check", func(ctx context.Context) error {
 					select {
 					case <-ctx.Done():
 						return fmt.Errorf("timed out")

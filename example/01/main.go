@@ -81,18 +81,12 @@ func Serve(ctx context.Context, hc healthcheck.HealthCheck) {
 			return
 		}
 
-		println(fmt.Sprintf("sever stopped"))
+		println("server stopped")
 
 	}()
 
-	select {
-	case <-ctx.Done():
-		{
-			if err = srv.Shutdown(context.Background()); err != nil {
-				println(fmt.Errorf("sever shutdown: %w", err))
-			}
-			return
-		}
+	<-ctx.Done()
+	if err = srv.Shutdown(context.Background()); err != nil {
+		println(fmt.Errorf("server shutdown: %w", err))
 	}
-
 }
