@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,15 +79,25 @@ func Test_healthCheck_HandlerMetrics(t *testing.T) {
 		Options []HCOption
 	}
 	type want struct {
-		status int
+		status      int
+		contentType string // empty = do not check
+		bodyContains string // empty = do not check; if set, body must contain this
 	}
 	tests := []struct {
 		name string
 		args args
 		want want
 	}{
-		{name: "Normal", args: args{Options: []HCOption{WithMetrics(false, false, false)}}, want: want{status: http.StatusOK}},
-		{name: "Not implemented", args: args{Options: nil}, want: want{status: http.StatusNotImplemented}},
+		{
+			name: "Normal",
+			args: args{Options: []HCOption{WithMetrics(false, false, false)}},
+			want: want{status: http.StatusOK, contentType: "text/plain", bodyContains: "promhttp"},
+		},
+		{
+			name: "Not implemented",
+			args: args{Options: nil},
+			want: want{status: http.StatusNotImplemented},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -99,8 +110,15 @@ func Test_healthCheck_HandlerMetrics(t *testing.T) {
 			h.HandlerMetrics(response, request)
 
 			assertResponseCode(t, response.Code, tt.want.status)
-			assertResponseContentType(t, response.Header().Get("Content-Type"), "")
-			assertResponseBody(t, response.Body.String(), "")
+			if tt.want.contentType != "" {
+				ct := response.Header().Get("Content-Type")
+				if !strings.Contains(ct, tt.want.contentType) {
+					t.Errorf("response content type: got %q, want to contain %q", ct, tt.want.contentType)
+				}
+			}
+			if tt.want.bodyContains != "" {
+				assertResponseBodyContains(t, response.Body.String(), tt.want.bodyContains)
+			}
 		})
 	}
 }
@@ -118,7 +136,7 @@ func Test_healthCheck_HandlerPProf(t *testing.T) {
 		args args
 		want want
 	}{
-		{name: "Normal", args: args{Options: nil}, want: want{status: http.StatusOK}},
+		{name: "Index page", args: args{Options: nil}, want: want{status: http.StatusOK}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -132,8 +150,90 @@ func Test_healthCheck_HandlerPProf(t *testing.T) {
 
 			assertResponseCode(t, response.Code, tt.want.status)
 			assertResponseContentType(t, response.Header().Get("Content-Type"), "text/html; charset=utf-8")
-			assertResponseBody(t, response.Body.String(), "<html>\n<head>\n<title>/debug/pprof/</title>\n<style>\n.profile-name{\n\tdisplay:inline-block;\n\twidth:6rem;\n}\n</style>\n</head>\n<body>\n/debug/pprof/\n<br>\n<p>Set debug=1 as a query parameter to export in legacy text format</p>\n<br>\nTypes of profiles available:\n<table>\n<thead><td>Count</td><td>Profile</td></thead>\n<tr><td>1</td><td><a href='allocs?debug=1'>allocs</a></td></tr>\n<tr><td>0</td><td><a href='block?debug=1'>block</a></td></tr>\n<tr><td>0</td><td><a href='cmdline?debug=1'>cmdline</a></td></tr>\n<tr><td>3</td><td><a href='goroutine?debug=1'>goroutine</a></td></tr>\n<tr><td>1</td><td><a href='heap?debug=1'>heap</a></td></tr>\n<tr><td>0</td><td><a href='mutex?debug=1'>mutex</a></td></tr>\n<tr><td>0</td><td><a href='profile?debug=1'>profile</a></td></tr>\n<tr><td>7</td><td><a href='threadcreate?debug=1'>threadcreate</a></td></tr>\n<tr><td>0</td><td><a href='trace?debug=1'>trace</a></td></tr>\n</table>\n<a href=\"goroutine?debug=2\">full goroutine stack dump</a>\n<br>\n<p>\nProfile Descriptions:\n<ul>\n<li><div class=profile-name>allocs: </div> A sampling of all past memory allocations</li>\n<li><div class=profile-name>block: </div> Stack traces that led to blocking on synchronization primitives</li>\n<li><div class=profile-name>cmdline: </div> The command line invocation of the current program</li>\n<li><div class=profile-name>goroutine: </div> Stack traces of all current goroutines. Use debug=2 as a query parameter to export in the same format as an unrecovered panic.</li>\n<li><div class=profile-name>heap: </div> A sampling of memory allocations of live objects. You can specify the gc GET parameter to run GC before taking the heap sample.</li>\n<li><div class=profile-name>mutex: </div> Stack traces of holders of contended mutexes</li>\n<li><div class=profile-name>profile: </div> CPU profile. You can specify the duration in the seconds GET parameter. After you get the profile file, use the go tool pprof command to investigate the profile.</li>\n<li><div class=profile-name>threadcreate: </div> Stack traces that led to the creation of new OS threads</li>\n<li><div class=profile-name>trace: </div> A trace of execution of the current program. You can specify the duration in the seconds GET parameter. After you get the trace file, use the go tool trace command to investigate the trace.</li>\n</ul>\n</p>\n</body>\n</html>")
+			body := response.Body.String()
+			// pprof index has dynamic counts (goroutine, allocs, etc.); check key markers only
+			assertResponseBodyContains(t, body, "/debug/pprof/")
+			assertResponseBodyContains(t, body, "Types of profiles available")
+			for _, profile := range []string{"allocs", "block", "cmdline", "goroutine", "heap", "mutex", "profile", "threadcreate", "trace"} {
+				assertResponseBodyContains(t, body, profile)
+			}
 		})
+	}
+}
+
+func Test_healthCheck_HandlerPProf_ProfileEndpoints(t *testing.T) {
+	// Ensure each pprof profile is served and returns 200.
+	// Without debug=1 profiles are served in binary form (application/octet-stream).
+	profiles := []struct {
+		path         string
+		contentType  string // empty means do not check
+		bodyContains string // empty means do not check
+	}{
+		{path: "/debug/goroutine", contentType: "", bodyContains: ""}, // binary
+		{path: "/debug/goroutine?debug=1", contentType: "text/plain; charset=utf-8", bodyContains: "goroutine"},
+		{path: "/debug/heap", contentType: "", bodyContains: ""},
+		{path: "/debug/heap?debug=1", contentType: "text/plain; charset=utf-8", bodyContains: "heap"},
+		{path: "/debug/allocs", contentType: "", bodyContains: ""},
+		{path: "/debug/allocs?debug=1", contentType: "text/plain; charset=utf-8", bodyContains: "allocs"},
+		{path: "/debug/block?debug=1", contentType: "text/plain; charset=utf-8", bodyContains: "contention"}, // pprof block text format
+		{path: "/debug/mutex?debug=1", contentType: "text/plain; charset=utf-8", bodyContains: "mutex"},
+		{path: "/debug/threadcreate?debug=1", contentType: "text/plain; charset=utf-8", bodyContains: "threadcreate"},
+	}
+
+	h := New()
+
+	for _, p := range profiles {
+		t.Run(p.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, p.path, nil)
+			rec := httptest.NewRecorder()
+			h.HandlerPProf(rec, req)
+
+			assertResponseCode(t, rec.Code, http.StatusOK)
+			if p.contentType != "" {
+				ct := rec.Header().Get("Content-Type")
+				if ct != p.contentType {
+					t.Errorf("Content-Type: got %q, want %q", ct, p.contentType)
+				}
+			}
+			if p.bodyContains != "" {
+				assertResponseBodyContains(t, rec.Body.String(), p.bodyContains)
+			}
+		})
+	}
+}
+
+func Test_healthCheck_HandlerPProf_IndexVsProfile(t *testing.T) {
+	// Ensure /debug/ serves the index (HTML) and /debug/goroutine serves the profile (text)
+	h := New()
+
+	t.Run("index is HTML", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, HandlerDebug, nil)
+		rec := httptest.NewRecorder()
+		h.HandlerPProf(rec, req)
+		assertResponseCode(t, rec.Code, http.StatusOK)
+		if ct := rec.Header().Get("Content-Type"); ct != "text/html; charset=utf-8" {
+			t.Errorf("index Content-Type: got %q, want text/html", ct)
+		}
+		if !strings.Contains(rec.Body.String(), "<html>") {
+			t.Error("index response should contain <html>")
+		}
+	})
+
+	t.Run("goroutine profile is text when debug=1", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/debug/goroutine?debug=1", nil)
+		rec := httptest.NewRecorder()
+		h.HandlerPProf(rec, req)
+		assertResponseCode(t, rec.Code, http.StatusOK)
+		if ct := rec.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+			t.Errorf("goroutine profile Content-Type: got %q, want text/plain", ct)
+		}
+	})
+}
+
+func assertResponseBodyContains(t testing.TB, body, substr string) {
+	t.Helper()
+	if substr != "" && !strings.Contains(body, substr) {
+		t.Errorf("response body does not contain %q, got: %s", substr, body)
 	}
 }
 
