@@ -2,15 +2,16 @@ package healthcheck
 
 import (
 	"io"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
 )
 
 func TestHTTPServer_DefaultConfig(t *testing.T) {
-	h := New().(*healthCheck)
+	h := New(WithPort(":8080"))
 	go func() {
-		if err := h.StartHTTPServer(); err != http.ErrServerClosed {
+		if err := h.StartHTTPServer(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
 		}
 	}()
@@ -30,9 +31,9 @@ func TestHTTPServer_CustomConfig(t *testing.T) {
 		WithSuccessStatus(201),
 		WithCheckStatusSuccess("GOOD"),
 		WithCheckStatusError("FAIL"),
-	).(*healthCheck)
+	)
 	go func(t *testing.T) {
-		if err := h.StartHTTPServer(); err != http.ErrServerClosed {
+		if err := h.StartHTTPServer(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
 		}
 	}(t)

@@ -2,7 +2,6 @@ package healthcheck
 
 import (
 	"context"
-	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"sync"
 	"time"

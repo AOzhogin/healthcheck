@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/AOzhogin/healthcheck"
-	"golang.org/x/sys/unix"
 	"math/rand"
 	"net/http"
 	"os"
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AOzhogin/healthcheck"
+	"golang.org/x/sys/unix"
 )
 
 const (

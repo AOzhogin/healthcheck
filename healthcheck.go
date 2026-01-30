@@ -47,7 +47,7 @@ type healthCheck struct {
 	port string // port for HTTP server
 }
 
-func New(ops ...HCOption) HealthCheck {
+func New(ops ...HCOption) *healthCheck {
 
 	h := &healthCheck{
 		checks:             newCheckList(),

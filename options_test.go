@@ -86,7 +86,7 @@ func TestWithCheckStatusError(t *testing.T) {
 }
 
 func TestStartHTTPServer(t *testing.T) {
-	h := New().(*healthCheck) // используем конструктор для правильной инициализации
+	h := New() // use constructor for proper initialization
 	ts := httptest.NewServer(http.HandlerFunc(h.HandlerHealth))
 	defer ts.Close()
 
