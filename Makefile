@@ -10,6 +10,9 @@ lint:
 
 ci: test lint
 
+clean:
+	go clean ./...
+
 mocks:
 	@mockery
 
