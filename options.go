@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -59,7 +60,14 @@ func WithBackCheck(interval time.Duration) HCOption {
 	}
 }
 
-// WithCheckStatusSuccess - set string status when check is successful, default "ok"
+// WithContext - set self context
+func WithContext(ctx context.Context) HCOption {
+	return func(check *healthCheck) {
+		check.ctx = ctx
+	}
+}
+
+// WithCheckStatusSuccess - set string status when check is success, default "ok"
 func WithCheckStatusSuccess(status string) HCOption {
 	return func(check *healthCheck) {
 		check.checkStatusSuccess = status

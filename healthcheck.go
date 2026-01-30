@@ -15,6 +15,7 @@ const (
 	HandlerLive        = "/live"
 	HandlerReady       = "/read"
 	HandlerStartup     = "/startup"
+	HandlerDebug       = "/debug/"
 )
 
 type HealthCheck interface {
@@ -23,7 +24,7 @@ type HealthCheck interface {
 
 	HandlerHealth(w http.ResponseWriter, r *http.Request)
 	HandlerMetrics(w http.ResponseWriter, r *http.Request)
-	StartHTTPServer() error
+	HandlerPProf(w http.ResponseWriter, r *http.Request)
 
 	Add(name string, notes string, e HCFunc) error
 }
@@ -39,13 +40,14 @@ type healthCheck struct {
 	timeOut            time.Duration
 	routine            bool
 	routineInterval    time.Duration
-	isWorked           bool
+	isWorked           chan struct{}
 	wg                 sync.WaitGroup
+	ctx                context.Context
 	Metrics
 	port string // port for HTTP server
 }
 
-func New(ops ...HCOption) HealthCheck {
+func New(ops ...HCOption) *healthCheck {
 
 	h := &healthCheck{
 		checks:             newCheckList(),
@@ -56,8 +58,8 @@ func New(ops ...HCOption) HealthCheck {
 		checkStatusSuccess: checkStatusSuccess,
 		checkStatusError:   checkStatusError,
 		cacheMutex:         sync.Mutex{},
-		isWorked:           true,
-		port:               ":8080", // default value
+		isWorked:           make(chan struct{}, 1),
+		ctx:                context.Background(),
 	}
 
 	for _, option := range ops {
@@ -78,11 +80,11 @@ func (h *healthCheck) Add(name string, notes string, e HCFunc) error {
 
 	var err error
 
-	h.checks.Lock()
-	defer h.checks.Unlock()
+	h.checks.Mutex.Lock()
+	defer h.checks.Mutex.Unlock()
 
 	if h.withMetrics() {
-		err = h.Metrics.Register(name)
+		err = h.Register(name)
 		if err != nil {
 			return err
 		}
@@ -106,15 +108,28 @@ func (h *healthCheck) Start() {
 
 		go func() {
 			defer h.wg.Done()
-			var cache checkResults
+
+			var (
+				cache checkResults
+			)
+
 			for {
-				cache = h.check()
-				h.cacheMutex.Lock()
-				h.cache = cache
-				h.cacheMutex.Unlock()
-				<-time.After(h.routineInterval)
-				if !h.isWorked {
-					return
+				select {
+				case <-h.ctx.Done():
+					{
+						return
+					}
+				case <-time.After(h.routineInterval):
+					{
+						cache = h.check()
+						h.cacheMutex.Lock()
+						h.cache = cache
+						h.cacheMutex.Unlock()
+					}
+				case <-h.isWorked:
+					{
+						return
+					}
 				}
 			}
 		}()
@@ -126,7 +141,7 @@ func (h *healthCheck) Start() {
 func (h *healthCheck) Shutdown() {
 
 	if h.routine {
-		h.isWorked = false
+		h.isWorked <- struct{}{}
 		h.wg.Wait()
 	}
 
@@ -135,10 +150,10 @@ func (h *healthCheck) Shutdown() {
 // check - main proc with process all checks
 func (h *healthCheck) check() checkResults {
 
-	h.checks.Lock()
-	defer h.checks.Unlock()
+	h.checks.Mutex.Lock()
+	defer h.checks.Mutex.Unlock()
 
-	ctx, done := context.WithTimeout(context.Background(), h.timeOut)
+	ctx, done := context.WithTimeout(h.ctx, h.timeOut)
 	defer done()
 
 	var (
@@ -166,7 +181,7 @@ func (h *healthCheck) check() checkResults {
 		r.Result = ""
 
 		if h.withMetrics() {
-			if err := h.Metrics.Save(name, execTime.Seconds(), err); err != nil {
+			if err := h.Save(name, execTime.Seconds(), err); err != nil {
 				fmt.Printf("error saving metric: %v \n", err)
 			}
 		}

@@ -2,15 +2,16 @@ package healthcheck
 
 import (
 	"io"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
 )
 
 func TestHTTPServer_DefaultConfig(t *testing.T) {
-	h := New().(*healthCheck)
+	h := New(WithPort(":8080"))
 	go func() {
-		if err := h.StartHTTPServer(); err != http.ErrServerClosed {
+		if err := h.StartHTTPServer(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
 		}
 	}()
@@ -30,9 +31,9 @@ func TestHTTPServer_CustomConfig(t *testing.T) {
 		WithSuccessStatus(201),
 		WithCheckStatusSuccess("GOOD"),
 		WithCheckStatusError("FAIL"),
-	).(*healthCheck)
+	)
 	go func(t *testing.T) {
-		if err := h.StartHTTPServer(); err != http.ErrServerClosed {
+		if err := h.StartHTTPServer(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
 		}
 	}(t)
@@ -44,9 +45,9 @@ func TestHTTPServer_CustomConfig(t *testing.T) {
 	if resp.StatusCode != 201 {
 		t.Errorf("expected status 201, got %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
-	if string(body) == "" || (string(body) != "" && !(contains(string(body), "GOOD") || contains(string(body), "FAIL"))) {
+	if string(body) == "" || (!contains(string(body), "GOOD") && !contains(string(body), "FAIL")) {
 		t.Errorf("expected body to contain custom status strings, got: %s", string(body))
 	}
 }

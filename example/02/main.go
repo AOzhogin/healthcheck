@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"github.com/AOzhogin/healthcheck"
+	"golang.org/x/sys/unix"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
-
-	"github.com/AOzhogin/healthcheck"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -25,29 +23,7 @@ func main() {
 	hc := healthcheck.New(
 		healthcheck.WithMetrics(false, false, true),
 		healthcheck.WithBackCheck(5*time.Second),
-		healthcheck.WithContext(ctx),
 	)
-	
-	if err := hc.Add("db", "db.company:1521", func(ctx context.Context) error {
-		<-time.After(time.Duration(rand.Intn(999)) * time.Millisecond)
-		return nil
-	}); err != nil {
-		panic(err)
-	}
-
-	if err := hc.Add("redis", "redis.company:9056", func(ctx context.Context) error {
-		<-time.After(time.Duration(rand.Intn(999)) * time.Millisecond)
-		return nil
-	}); err != nil {
-		panic(err)
-	}
-
-	if err := hc.Add("oracle11g", "oracle.company", func(ctx context.Context) error {
-		<-time.After(time.Duration(rand.Intn(999)) * time.Millisecond)
-		return nil
-	}); err != nil {
-		panic(err)
-	}
 
 	hc.Start()
 	defer hc.Shutdown()
@@ -65,7 +41,8 @@ func Serve(ctx context.Context, hc healthcheck.HealthCheck) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc(healthcheck.HandlerHealthCheck, hc.HandlerHealth)
-	mux.HandleFunc(healthcheck.HandlerMetrics, hc.HandlerMetrics)
+
+	mux.HandleFunc(healthcheck.HandlerDebug, hc.HandlerPProf)
 
 	srv := http.Server{
 		Handler: mux,

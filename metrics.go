@@ -29,7 +29,7 @@ type Metrics interface {
 	Save(name string, t float64, err error) error
 }
 
-// metrics - хранения данных для взаимодействия с метриками
+// metrics - holds data for metrics interaction
 type metrics struct {
 	// mm - collectors storage for access
 	mm map[string]prometheus.Collector
@@ -138,7 +138,7 @@ func (m *metrics) Save(name string, t float64, err error) error {
 	}
 
 	if collector, ok = m.mm[fmt.Sprintf("%s_dur", name)]; !ok {
-		return fmt.Errorf("рistogram collector with name %s - not found", name)
+		return fmt.Errorf("histogram collector with name %s - not found", name)
 	}
 
 	switch collector.(type) {
