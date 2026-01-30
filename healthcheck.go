@@ -44,6 +44,7 @@ type healthCheck struct {
 	wg                 sync.WaitGroup
 	ctx                context.Context
 	Metrics
+	port string // port for HTTP server
 }
 
 func New(ops ...HCOption) HealthCheck {
@@ -180,7 +181,9 @@ func (h *healthCheck) check() checkResults {
 		r.Result = ""
 
 		if h.withMetrics() {
-			h.Metrics.Save(name, execTime.Seconds(), err)
+			if err := h.Metrics.Save(name, execTime.Seconds(), err); err != nil {
+				fmt.Printf("error saving metric: %v \n", err)
+			}
 		}
 
 		if err != nil {
@@ -200,4 +203,14 @@ func (h *healthCheck) check() checkResults {
 
 	return res
 
+}
+
+// StartHTTPServer starts the HTTP server on the default port 8080, unless another port is set via options
+func (h *healthCheck) StartHTTPServer() error {
+	mux := http.NewServeMux()
+	mux.HandleFunc(HandlerHealthCheck, h.HandlerHealth)
+	if h.Metrics != nil {
+		mux.HandleFunc(HandlerMetrics, h.HandlerMetrics)
+	}
+	return http.ListenAndServe(h.port, mux)
 }

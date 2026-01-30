@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/AOzhogin/healthcheck"
 )
 
 const (
@@ -24,29 +26,27 @@ func main() {
 	hc := healthcheck.New(
 		healthcheck.WithMetrics(false, false, true),
 		healthcheck.WithBackCheck(5*time.Second),
-		//	healthcheck.WithContext(ctx),
+		healthcheck.WithContext(ctx),
 	)
-
-	hc.Add("db", "db.company:1521", func(ctx context.Context) error {
+	
+	if err := hc.Add("db", "db.company:1521", func(ctx context.Context) error {
 		<-time.After(time.Duration(rand.Intn(999)) * time.Millisecond)
 		return nil
-	})
-
-	err := hc.Add("redis", "redis.company:9056", func(ctx context.Context) error {
-		<-time.After(time.Duration(rand.Intn(999)) * time.Millisecond)
-		return nil
-	})
-
-	if err != nil {
+	}); err != nil {
 		panic(err)
 	}
 
-	err = hc.Add("oracle11g", "oracle.company", func(ctx context.Context) error {
+	if err := hc.Add("redis", "redis.company:9056", func(ctx context.Context) error {
 		<-time.After(time.Duration(rand.Intn(999)) * time.Millisecond)
 		return nil
-	})
+	}); err != nil {
+		panic(err)
+	}
 
-	if err != nil {
+	if err := hc.Add("oracle11g", "oracle.company", func(ctx context.Context) error {
+		<-time.After(time.Duration(rand.Intn(999)) * time.Millisecond)
+		return nil
+	}); err != nil {
 		panic(err)
 	}
 
