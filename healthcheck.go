@@ -48,6 +48,8 @@ type healthCheck struct {
 
 	basicAuthUser string // non-empty enables HTTP Basic Auth for /health, /metrics, /debug
 	basicAuthPass string
+
+	customMiddleware func(http.Handler) http.Handler // optional user middleware applied to all registered endpoints
 }
 
 func New(ops ...HCOption) *healthCheck {
@@ -208,14 +210,26 @@ func (h *healthCheck) check() checkResults {
 
 }
 
+// wrapHandler applies custom middleware (if set) and then Basic Auth (if enabled) to next.
+func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
+	if h.customMiddleware != nil {
+		next = h.customMiddleware(next)
+	}
+	if h.withBasicAuth() {
+		next = h.MiddlewareAuth(next)
+	}
+	return next
+}
+
 // StartHTTPServer starts the HTTP server on the default port 8080, unless another port is set via options.
 // Registers /health, /metrics (if metrics enabled), and /debug/ (pprof). When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
+// When WithMiddleware is set, the custom middleware is applied first, then Basic Auth (if enabled).
 func (h *healthCheck) StartHTTPServer() error {
 	mux := http.NewServeMux()
-	mux.Handle(HandlerHealthCheck, h.MiddlewareAuth(http.HandlerFunc(h.HandlerHealth)))
+	mux.Handle(HandlerHealthCheck, h.wrapHandler(http.HandlerFunc(h.HandlerHealth)))
 	if h.Metrics != nil {
-		mux.Handle(HandlerMetrics, h.MiddlewareAuth(h.Metrics.HandlerMetrics()))
+		mux.Handle(HandlerMetrics, h.wrapHandler(h.Metrics.HandlerMetrics()))
 	}
-	mux.Handle(HandlerDebug, h.MiddlewareAuth(http.HandlerFunc(h.HandlerPProf)))
+	mux.Handle(HandlerDebug, h.wrapHandler(http.HandlerFunc(h.HandlerPProf)))
 	return http.ListenAndServe(h.port, mux)
 }

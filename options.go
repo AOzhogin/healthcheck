@@ -96,3 +96,11 @@ func WithBasicAuth(username, password string) HCOption {
 		check.basicAuthPass = password
 	}
 }
+
+// WithMiddleware sets a custom middleware applied to /health, /metrics, and /debug in StartHTTPServer.
+// The middleware runs before Basic Auth (if enabled). Pass nil to disable.
+func WithMiddleware(mw func(http.Handler) http.Handler) HCOption {
+	return func(check *healthCheck) {
+		check.customMiddleware = mw
+	}
+}

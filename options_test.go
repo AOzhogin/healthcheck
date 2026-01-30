@@ -97,6 +97,30 @@ func TestWithBasicAuth(t *testing.T) {
 	}
 }
 
+func TestWithMiddleware(t *testing.T) {
+	h := &healthCheck{}
+	called := false
+	mw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			next.ServeHTTP(w, r)
+		})
+	}
+	WithMiddleware(mw)(h)
+	if h.customMiddleware == nil {
+		t.Fatal("expected customMiddleware to be set")
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	h.wrapHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })).ServeHTTP(rec, req)
+	if !called {
+		t.Error("expected custom middleware to be called")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+}
+
 func TestStartHTTPServer(t *testing.T) {
 	h := New() // use constructor for proper initialization
 	ts := httptest.NewServer(http.HandlerFunc(h.HandlerHealth))
