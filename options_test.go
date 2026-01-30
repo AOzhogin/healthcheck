@@ -85,6 +85,18 @@ func TestWithCheckStatusError(t *testing.T) {
 	}
 }
 
+func TestWithBasicAuth(t *testing.T) {
+	h := &healthCheck{}
+	WithBasicAuth("user", "pass")(h)
+	if h.basicAuthUser != "user" || h.basicAuthPass != "pass" {
+		t.Errorf("expected basicAuth user=user pass=pass, got user=%q pass=%q", h.basicAuthUser, h.basicAuthPass)
+	}
+	WithBasicAuth("", "")(h)
+	if h.basicAuthUser != "" {
+		t.Error("empty username should disable Basic Auth")
+	}
+}
+
 func TestStartHTTPServer(t *testing.T) {
 	h := New() // use constructor for proper initialization
 	ts := httptest.NewServer(http.HandlerFunc(h.HandlerHealth))

@@ -45,6 +45,9 @@ type healthCheck struct {
 	ctx                context.Context
 	Metrics
 	port string // port for HTTP server
+
+	basicAuthUser string // non-empty enables HTTP Basic Auth for /health, /metrics, /debug
+	basicAuthPass string
 }
 
 func New(ops ...HCOption) *healthCheck {
@@ -205,12 +208,14 @@ func (h *healthCheck) check() checkResults {
 
 }
 
-// StartHTTPServer starts the HTTP server on the default port 8080, unless another port is set via options
+// StartHTTPServer starts the HTTP server on the default port 8080, unless another port is set via options.
+// Registers /health, /metrics (if metrics enabled), and /debug/ (pprof). When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
 func (h *healthCheck) StartHTTPServer() error {
 	mux := http.NewServeMux()
-	mux.HandleFunc(HandlerHealthCheck, h.HandlerHealth)
+	mux.Handle(HandlerHealthCheck, h.MiddlewareAuth(http.HandlerFunc(h.HandlerHealth)))
 	if h.Metrics != nil {
-		mux.HandleFunc(HandlerMetrics, h.HandlerMetrics)
+		mux.Handle(HandlerMetrics, h.MiddlewareAuth(h.Metrics.HandlerMetrics()))
 	}
+	mux.Handle(HandlerDebug, h.MiddlewareAuth(http.HandlerFunc(h.HandlerPProf)))
 	return http.ListenAndServe(h.port, mux)
 }

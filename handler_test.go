@@ -2,6 +2,7 @@ package healthcheck
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -256,4 +257,95 @@ func assertResponseBody(t testing.TB, got, want string) {
 	if got != want {
 		t.Errorf("response body is wrong, got %q want %q", got, want)
 	}
+}
+
+func Test_healthCheck_RequireBasicAuth(t *testing.T) {
+	const user, pass = "admin", "secret"
+
+	t.Run("no auth when disabled", func(t *testing.T) {
+		h := New()
+		req := httptest.NewRequest(http.MethodGet, HandlerHealthCheck, nil)
+		rec := httptest.NewRecorder()
+		h.HandlerHealth(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("without Basic Auth option: got status %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("401 without Authorization header when enabled", func(t *testing.T) {
+		h := New(WithBasicAuth(user, pass))
+		req := httptest.NewRequest(http.MethodGet, HandlerHealthCheck, nil)
+		rec := httptest.NewRecorder()
+		h.MiddlewareAuth(http.HandlerFunc(h.HandlerHealth)).ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("no creds: got status %d, want 401", rec.Code)
+		}
+		if rec.Header().Get("WWW-Authenticate") == "" {
+			t.Error("want WWW-Authenticate header on 401")
+		}
+	})
+
+	t.Run("401 with wrong credentials", func(t *testing.T) {
+		h := New(WithBasicAuth(user, pass))
+		req := httptest.NewRequest(http.MethodGet, HandlerHealthCheck, nil)
+		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("wrong:wrong")))
+		rec := httptest.NewRecorder()
+		h.MiddlewareAuth(http.HandlerFunc(h.HandlerHealth)).ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("wrong creds: got status %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("200 with valid credentials", func(t *testing.T) {
+		h := New(WithBasicAuth(user, pass))
+		req := httptest.NewRequest(http.MethodGet, HandlerHealthCheck, nil)
+		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
+		rec := httptest.NewRecorder()
+		h.MiddlewareAuth(http.HandlerFunc(h.HandlerHealth)).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("valid creds: got status %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("401 then 200 for /metrics with Basic Auth", func(t *testing.T) {
+		h := New(WithBasicAuth(user, pass), WithMetrics(false, false, false))
+		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))
+		metricsHandler := h.MiddlewareAuth(http.HandlerFunc(h.HandlerMetrics))
+
+		req := httptest.NewRequest(http.MethodGet, HandlerMetrics, nil)
+		rec := httptest.NewRecorder()
+		metricsHandler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("metrics no auth: got %d, want 401", rec.Code)
+		}
+
+		req2 := httptest.NewRequest(http.MethodGet, HandlerMetrics, nil)
+		req2.Header.Set("Authorization", auth)
+		rec2 := httptest.NewRecorder()
+		metricsHandler.ServeHTTP(rec2, req2)
+		if rec2.Code != http.StatusOK {
+			t.Errorf("metrics with auth: got %d, want 200", rec2.Code)
+		}
+	})
+
+	t.Run("401 then 200 for /debug/ (pprof) with Basic Auth", func(t *testing.T) {
+		h := New(WithBasicAuth(user, pass))
+		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))
+
+		req := httptest.NewRequest(http.MethodGet, HandlerDebug, nil)
+		rec := httptest.NewRecorder()
+		h.MiddlewareAuth(http.HandlerFunc(h.HandlerPProf)).ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("debug no auth: got %d, want 401", rec.Code)
+		}
+
+		req2 := httptest.NewRequest(http.MethodGet, HandlerDebug, nil)
+		req2.Header.Set("Authorization", auth)
+		rec2 := httptest.NewRecorder()
+		h.MiddlewareAuth(http.HandlerFunc(h.HandlerPProf)).ServeHTTP(rec2, req2)
+		if rec2.Code != http.StatusOK {
+			t.Errorf("debug with auth: got %d, want 200", rec2.Code)
+		}
+		assertResponseBodyContains(t, rec2.Body.String(), "/debug/pprof/")
+	})
 }

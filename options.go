@@ -87,3 +87,12 @@ func WithPort(port string) HCOption {
 		check.port = port
 	}
 }
+
+// WithBasicAuth enables HTTP Basic Auth for /health, /metrics, and /debug endpoints.
+// If username is empty, Basic Auth is disabled.
+func WithBasicAuth(username, password string) HCOption {
+	return func(check *healthCheck) {
+		check.basicAuthUser = username
+		check.basicAuthPass = password
+	}
+}
