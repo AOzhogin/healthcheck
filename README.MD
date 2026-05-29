@@ -26,7 +26,7 @@ go get -u github.com/AOzhogin/healthcheck
 ```go
 // initialize
 hc := healthcheck.New(
-    healthcheck.WithPort(8081), // custom port
+    healthcheck.WithHTTPAddress(":8081"), // custom HTTP listen address
     healthcheck.WithMetrics(false, false, false),
     healthcheck.WithBackCheck(5*time.Second),
 )
@@ -89,8 +89,32 @@ Lib already constain constants for handlers:
 ```go
 HandlerHealthCheck = "/health"
 HandlerLive        = "/live"
-HandlerReady       = "/read"
+HandlerReady       = "/ready"
 HandlerStartup     = "/startup"
+```
+
+#### Custom k8s probe handlers
+
+`StartHTTPServer` serves `/live`, `/ready`, and `/startup`. By default each runs the
+registered checks (like `/health`). Assign your own handler per probe with the setters
+(pass `nil` to fall back to the default). Call them **before** `StartHTTPServer` — handlers
+are read once at route registration.
+
+```go
+hc := healthcheck.New(healthcheck.WithHTTPAddress(":8080"))
+
+// Liveness should be cheap and dependency-free (a DB blip must not restart the pod).
+hc.SetHandlerLive(func(w http.ResponseWriter, _ *http.Request) {
+    w.WriteHeader(http.StatusOK)
+})
+
+// Readiness / startup can gate on dependencies or warmup state.
+hc.SetHandlerReady(myReadinessHandler)
+hc.SetHandlerStartup(myStartupHandler)
+
+if err := hc.StartHTTPServer(); err != nil {
+    panic(err)
+}
 ```
 
 #### Options
@@ -104,7 +128,10 @@ WithMetricsRegistry(r *prometheus.Registry) // use external Prometheus registry 
 WithBackCheck(interval time.Duration)   // run checks in background with specified interval
 WithCheckStatusSuccess(status string)   // set string status for successful check (default: "ok")
 WithCheckStatusError(status string)     // set string status for failed check (default: "error")
-WithPort(port int)                      // set HTTP server port (default: 8080)
+WithHTTPAddress(addr string)            // set HTTP listen address for StartHTTPServer (default: ":8080")
+WithBasicAuth(user, pass string)        // enable HTTP Basic Auth on the served endpoints
+WithMiddleware(mw func(http.Handler) http.Handler) // apply custom middleware to served endpoints
+WithoutPProf()                          // disable the pprof (/debug/) endpoint (enabled by default)
 ```
 
 ### Metrics

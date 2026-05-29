@@ -3,6 +3,7 @@ package healthcheck
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -71,6 +72,44 @@ func Test_healthCheck_HandlerHealth(t *testing.T) {
 			assertResponseContentType(t, response.Header().Get("Content-Type"), "application/json")
 			assertResponseBody(t, response.Body.String(), "")
 		})
+	}
+}
+
+func Test_healthCheck_HandlerHealth_BodyJSON(t *testing.T) {
+	h := New()
+	if err := h.Add("db", "db.company:5432", func(context.Context) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, HandlerHealthCheck+"?body=true", nil)
+	rec := httptest.NewRecorder()
+	h.HandlerHealth(rec, req)
+
+	assertResponseCode(t, rec.Code, http.StatusOK)
+	assertResponseContentType(t, rec.Header().Get("Content-Type"), "application/json")
+
+	var res struct {
+		Status string `json:"status"`
+		Checks map[string]struct {
+			Status string `json:"status"`
+			Notes  string `json:"notes"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("body is not valid JSON: %v; body=%s", err, rec.Body.String())
+	}
+	if res.Status != "ok" {
+		t.Errorf("status: got %q, want %q", res.Status, "ok")
+	}
+	db, ok := res.Checks["db"]
+	if !ok {
+		t.Fatalf("checks does not contain %q: %s", "db", rec.Body.String())
+	}
+	if db.Status != "ok" {
+		t.Errorf("db check status: got %q, want %q", db.Status, "ok")
+	}
+	if db.Notes != "db.company:5432" {
+		t.Errorf("db check notes: got %q, want %q", db.Notes, "db.company:5432")
 	}
 }
 

@@ -29,7 +29,7 @@ func main() {
 	}
 
 	hc := healthcheck.New(
-		healthcheck.WithPort(listenPort),
+		healthcheck.WithHTTPAddress(listenPort),
 		healthcheck.WithMiddleware(customMiddleware),
 		healthcheck.WithBasicAuth("admin", "secret"),
 		healthcheck.WithMetrics(false, false, false),

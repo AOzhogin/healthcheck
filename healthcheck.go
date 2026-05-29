@@ -13,7 +13,7 @@ const (
 	checkStatusError   = "error"
 	HandlerHealthCheck = "/health"
 	HandlerLive        = "/live"
-	HandlerReady       = "/read"
+	HandlerReady       = "/ready"
 	HandlerStartup     = "/startup"
 	HandlerDebug       = "/debug/"
 )
@@ -25,6 +25,10 @@ type HealthCheck interface {
 	HandlerHealth(w http.ResponseWriter, r *http.Request)
 	HandlerMetrics(w http.ResponseWriter, r *http.Request)
 	HandlerPProf(w http.ResponseWriter, r *http.Request)
+
+	SetHandlerLive(handler http.HandlerFunc)
+	SetHandlerReady(handler http.HandlerFunc)
+	SetHandlerStartup(handler http.HandlerFunc)
 
 	Add(name string, notes string, e HCFunc) error
 }
@@ -44,12 +48,20 @@ type healthCheck struct {
 	wg                 sync.WaitGroup
 	ctx                context.Context
 	Metrics
-	port string // port for HTTP server
+	httpAddr string // HTTP listen address for StartHTTPServer, e.g. ":8080"
 
 	basicAuthUser string // non-empty enables HTTP Basic Auth for /health, /metrics, /debug
 	basicAuthPass string
 
 	customMiddleware func(http.Handler) http.Handler // optional user middleware applied to all registered endpoints
+
+	pprofEnabled bool // when true, StartHTTPServer registers the pprof (/debug/) endpoint
+
+	// custom handlers for the k8s probe endpoints; nil means use the default (HandlerHealth).
+	// Read once at route registration in StartHTTPServer; set them before calling it.
+	liveHandler    http.HandlerFunc
+	readyHandler   http.HandlerFunc
+	startupHandler http.HandlerFunc
 }
 
 func New(ops ...HCOption) *healthCheck {
@@ -65,6 +77,8 @@ func New(ops ...HCOption) *healthCheck {
 		cacheMutex:         sync.Mutex{},
 		isWorked:           make(chan struct{}, 1),
 		ctx:                context.Background(),
+		httpAddr:           ":8080",
+		pprofEnabled:       true,
 	}
 
 	for _, option := range ops {
@@ -210,6 +224,35 @@ func (h *healthCheck) check() checkResults {
 
 }
 
+// SetHandlerLive sets a custom handler for the /live (liveness) endpoint.
+// Pass nil to fall back to the default handler (runs the checks, like /health).
+// Read once at route registration; call before StartHTTPServer.
+func (h *healthCheck) SetHandlerLive(handler http.HandlerFunc) {
+	h.liveHandler = handler
+}
+
+// SetHandlerReady sets a custom handler for the /ready (readiness) endpoint.
+// Pass nil to fall back to the default handler (runs the checks, like /health).
+// Read once at route registration; call before StartHTTPServer.
+func (h *healthCheck) SetHandlerReady(handler http.HandlerFunc) {
+	h.readyHandler = handler
+}
+
+// SetHandlerStartup sets a custom handler for the /startup endpoint.
+// Pass nil to fall back to the default handler (runs the checks, like /health).
+// Read once at route registration; call before StartHTTPServer.
+func (h *healthCheck) SetHandlerStartup(handler http.HandlerFunc) {
+	h.startupHandler = handler
+}
+
+// resolveHandler returns custom if non-nil, otherwise the default probe handler (HandlerHealth).
+func (h *healthCheck) resolveHandler(custom http.HandlerFunc) http.Handler {
+	if custom != nil {
+		return custom
+	}
+	return http.HandlerFunc(h.HandlerHealth)
+}
+
 // wrapHandler applies custom middleware (if set) and then Basic Auth (if enabled) to next.
 func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 	if h.customMiddleware != nil {
@@ -221,15 +264,24 @@ func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 	return next
 }
 
-// StartHTTPServer starts the HTTP server on the default port 8080, unless another port is set via options.
-// Registers /health, /metrics (if metrics enabled), and /debug/ (pprof). When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
+// StartHTTPServer starts the HTTP server on the address set via WithHTTPAddress (default ":8080").
+// Registers /health, the k8s probes /live, /ready, /startup, /metrics (if metrics enabled),
+// and /debug/ (pprof, unless disabled via WithoutPProf). The probe endpoints use the custom
+// handlers set via SetHandlerLive/SetHandlerReady/SetHandlerStartup, or default to running the
+// checks (like /health) when no custom handler is set.
+// When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
 // When WithMiddleware is set, the custom middleware is applied first, then Basic Auth (if enabled).
 func (h *healthCheck) StartHTTPServer() error {
 	mux := http.NewServeMux()
 	mux.Handle(HandlerHealthCheck, h.wrapHandler(http.HandlerFunc(h.HandlerHealth)))
+	mux.Handle(HandlerLive, h.wrapHandler(h.resolveHandler(h.liveHandler)))
+	mux.Handle(HandlerReady, h.wrapHandler(h.resolveHandler(h.readyHandler)))
+	mux.Handle(HandlerStartup, h.wrapHandler(h.resolveHandler(h.startupHandler)))
 	if h.Metrics != nil {
 		mux.Handle(HandlerMetrics, h.wrapHandler(h.Metrics.HandlerMetrics()))
 	}
-	mux.Handle(HandlerDebug, h.wrapHandler(http.HandlerFunc(h.HandlerPProf)))
-	return http.ListenAndServe(h.port, mux)
+	if h.pprofEnabled {
+		mux.Handle(HandlerDebug, h.wrapHandler(http.HandlerFunc(h.HandlerPProf)))
+	}
+	return http.ListenAndServe(h.httpAddr, mux)
 }

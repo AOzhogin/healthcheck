@@ -5,6 +5,8 @@ go 1.24
 require (
 	github.com/prometheus/client_golang v1.17.0
 	github.com/stretchr/testify v1.9.0
+	go.uber.org/goleak v1.3.0
+	golang.org/x/sys v0.11.0
 )
 
 require (
@@ -19,7 +21,6 @@ require (
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.11.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	golang.org/x/sys v0.11.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

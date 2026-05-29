@@ -9,11 +9,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func TestWithPort(t *testing.T) {
-	h := &healthCheck{port: ":8080"}
-	WithPort(":9090")(h)
-	if h.port != ":9090" {
-		t.Errorf("expected port :9090, got %s", h.port)
+func TestWithHTTPAddress(t *testing.T) {
+	h := &healthCheck{httpAddr: ":8080"}
+	WithHTTPAddress(":9090")(h)
+	if h.httpAddr != ":9090" {
+		t.Errorf("expected httpAddr :9090, got %s", h.httpAddr)
+	}
+}
+
+func TestWithoutPProf(t *testing.T) {
+	h := &healthCheck{pprofEnabled: true}
+	WithoutPProf()(h)
+	if h.pprofEnabled {
+		t.Error("expected pprofEnabled to be false after WithoutPProf")
 	}
 }
 

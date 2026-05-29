@@ -81,10 +81,19 @@ func WithCheckStatusError(status string) HCOption {
 	}
 }
 
-// WithPort - set port for HTTP server
-func WithPort(port string) HCOption {
+// WithHTTPAddress sets the HTTP listen address used by StartHTTPServer, e.g. ":8080".
+// It is a full net address (host:port), not just a port number.
+func WithHTTPAddress(addr string) HCOption {
 	return func(check *healthCheck) {
-		check.port = port
+		check.httpAddr = addr
+	}
+}
+
+// WithoutPProf disables the pprof (/debug/) endpoint in StartHTTPServer.
+// pprof is enabled by default; the HandlerPProf method remains available for manual wiring.
+func WithoutPProf() HCOption {
+	return func(check *healthCheck) {
+		check.pprofEnabled = false
 	}
 }
 
