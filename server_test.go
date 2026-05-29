@@ -9,7 +9,7 @@ import (
 )
 
 func TestHTTPServer_DefaultConfig(t *testing.T) {
-	h := New(WithPort(":8080"))
+	h := New(WithHTTPAddress(":8080"))
 	go func() {
 		if err := h.StartHTTPServer(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
@@ -27,7 +27,7 @@ func TestHTTPServer_DefaultConfig(t *testing.T) {
 
 func TestHTTPServer_CustomConfig(t *testing.T) {
 	h := New(
-		WithPort(":18080"),
+		WithHTTPAddress(":18080"),
 		WithSuccessStatus(201),
 		WithCheckStatusSuccess("GOOD"),
 		WithCheckStatusError("FAIL"),

@@ -23,7 +23,7 @@ func TestWithMiddlewareAndBasicAuth_StartHTTPServer(t *testing.T) {
 	}
 
 	hc := New(
-		WithPort(middlewareAuthTestPort),
+		WithHTTPAddress(middlewareAuthTestPort),
 		WithMiddleware(customMiddleware),
 		WithBasicAuth(middlewareAuthUser, middlewareAuthPass),
 	)
@@ -91,6 +91,18 @@ func TestWithMiddlewareAndBasicAuth_StartHTTPServer(t *testing.T) {
 			t.Errorf("expected 401 with wrong password, got %d", resp.StatusCode)
 		}
 	})
+}
+
+func TestMiddlewareAuth_PassThroughWhenDisabled(t *testing.T) {
+	h := New() // Basic Auth disabled
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, HandlerHealthCheck, nil)
+	h.MiddlewareAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("auth disabled should pass through: got %d, want 200", rec.Code)
+	}
 }
 
 func TestWithMiddleware_WrapsHandler(t *testing.T) {

@@ -239,6 +239,126 @@ func (_c *MockHealthCheck_HandlerPProf_Call) RunAndReturn(run func(w http.Respon
 	return _c
 }
 
+// SetHandlerLive provides a mock function for the type MockHealthCheck
+func (_mock *MockHealthCheck) SetHandlerLive(handler http.HandlerFunc) {
+	_mock.Called(handler)
+	return
+}
+
+// MockHealthCheck_SetHandlerLive_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetHandlerLive'
+type MockHealthCheck_SetHandlerLive_Call struct {
+	*mock.Call
+}
+
+// SetHandlerLive is a helper method to define mock.On call
+//   - handler http.HandlerFunc
+func (_e *MockHealthCheck_Expecter) SetHandlerLive(handler interface{}) *MockHealthCheck_SetHandlerLive_Call {
+	return &MockHealthCheck_SetHandlerLive_Call{Call: _e.mock.On("SetHandlerLive", handler)}
+}
+
+func (_c *MockHealthCheck_SetHandlerLive_Call) Run(run func(handler http.HandlerFunc)) *MockHealthCheck_SetHandlerLive_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 http.HandlerFunc
+		if args[0] != nil {
+			arg0 = args[0].(http.HandlerFunc)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockHealthCheck_SetHandlerLive_Call) Return() *MockHealthCheck_SetHandlerLive_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockHealthCheck_SetHandlerLive_Call) RunAndReturn(run func(handler http.HandlerFunc)) *MockHealthCheck_SetHandlerLive_Call {
+	_c.Run(run)
+	return _c
+}
+
+// SetHandlerReady provides a mock function for the type MockHealthCheck
+func (_mock *MockHealthCheck) SetHandlerReady(handler http.HandlerFunc) {
+	_mock.Called(handler)
+	return
+}
+
+// MockHealthCheck_SetHandlerReady_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetHandlerReady'
+type MockHealthCheck_SetHandlerReady_Call struct {
+	*mock.Call
+}
+
+// SetHandlerReady is a helper method to define mock.On call
+//   - handler http.HandlerFunc
+func (_e *MockHealthCheck_Expecter) SetHandlerReady(handler interface{}) *MockHealthCheck_SetHandlerReady_Call {
+	return &MockHealthCheck_SetHandlerReady_Call{Call: _e.mock.On("SetHandlerReady", handler)}
+}
+
+func (_c *MockHealthCheck_SetHandlerReady_Call) Run(run func(handler http.HandlerFunc)) *MockHealthCheck_SetHandlerReady_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 http.HandlerFunc
+		if args[0] != nil {
+			arg0 = args[0].(http.HandlerFunc)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockHealthCheck_SetHandlerReady_Call) Return() *MockHealthCheck_SetHandlerReady_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockHealthCheck_SetHandlerReady_Call) RunAndReturn(run func(handler http.HandlerFunc)) *MockHealthCheck_SetHandlerReady_Call {
+	_c.Run(run)
+	return _c
+}
+
+// SetHandlerStartup provides a mock function for the type MockHealthCheck
+func (_mock *MockHealthCheck) SetHandlerStartup(handler http.HandlerFunc) {
+	_mock.Called(handler)
+	return
+}
+
+// MockHealthCheck_SetHandlerStartup_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetHandlerStartup'
+type MockHealthCheck_SetHandlerStartup_Call struct {
+	*mock.Call
+}
+
+// SetHandlerStartup is a helper method to define mock.On call
+//   - handler http.HandlerFunc
+func (_e *MockHealthCheck_Expecter) SetHandlerStartup(handler interface{}) *MockHealthCheck_SetHandlerStartup_Call {
+	return &MockHealthCheck_SetHandlerStartup_Call{Call: _e.mock.On("SetHandlerStartup", handler)}
+}
+
+func (_c *MockHealthCheck_SetHandlerStartup_Call) Run(run func(handler http.HandlerFunc)) *MockHealthCheck_SetHandlerStartup_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 http.HandlerFunc
+		if args[0] != nil {
+			arg0 = args[0].(http.HandlerFunc)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockHealthCheck_SetHandlerStartup_Call) Return() *MockHealthCheck_SetHandlerStartup_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockHealthCheck_SetHandlerStartup_Call) RunAndReturn(run func(handler http.HandlerFunc)) *MockHealthCheck_SetHandlerStartup_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Shutdown provides a mock function for the type MockHealthCheck
 func (_mock *MockHealthCheck) Shutdown() {
 	_mock.Called()
