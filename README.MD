@@ -141,26 +141,30 @@ Prometheus metrics examples
 #### main health check metrics example
 
 ```
-# HELP healthcheck_metrics_db Checking available db
-# TYPE healthcheck_metrics_db gauge
-healthcheck_metrics_db 1
-# HELP healthcheck_metrics_db_dur Checking duration db
-# TYPE healthcheck_metrics_db_dur histogram
-healthcheck_metrics_db_dur_bucket{le="0.005"} 0
-healthcheck_metrics_db_dur_bucket{le="0.01"} 0
-healthcheck_metrics_db_dur_bucket{le="0.025"} 0
-healthcheck_metrics_db_dur_bucket{le="0.05"} 0
-healthcheck_metrics_db_dur_bucket{le="0.1"} 1
-healthcheck_metrics_db_dur_bucket{le="0.25"} 1
-healthcheck_metrics_db_dur_bucket{le="0.5"} 1
-healthcheck_metrics_db_dur_bucket{le="1"} 1
-healthcheck_metrics_db_dur_bucket{le="2.5"} 1
-healthcheck_metrics_db_dur_bucket{le="5"} 1
-healthcheck_metrics_db_dur_bucket{le="10"} 1
-healthcheck_metrics_db_dur_bucket{le="+Inf"} 1
-healthcheck_metrics_db_dur_sum 0.094148065
-healthcheck_metrics_db_dur_count 1
+# HELP healthcheck_metrics_up Check availability (1 = ok, 0 = error)
+# TYPE healthcheck_metrics_up gauge
+healthcheck_metrics_up{check="db"} 1
+# HELP healthcheck_metrics_duration_seconds Check execution duration in seconds
+# TYPE healthcheck_metrics_duration_seconds histogram
+healthcheck_metrics_duration_seconds_bucket{check="db",le="0.005"} 0
+healthcheck_metrics_duration_seconds_bucket{check="db",le="0.01"} 0
+healthcheck_metrics_duration_seconds_bucket{check="db",le="0.025"} 0
+healthcheck_metrics_duration_seconds_bucket{check="db",le="0.05"} 0
+healthcheck_metrics_duration_seconds_bucket{check="db",le="0.1"} 1
+healthcheck_metrics_duration_seconds_bucket{check="db",le="0.25"} 1
+healthcheck_metrics_duration_seconds_bucket{check="db",le="0.5"} 1
+healthcheck_metrics_duration_seconds_bucket{check="db",le="1"} 1
+healthcheck_metrics_duration_seconds_bucket{check="db",le="2.5"} 1
+healthcheck_metrics_duration_seconds_bucket{check="db",le="5"} 1
+healthcheck_metrics_duration_seconds_bucket{check="db",le="10"} 1
+healthcheck_metrics_duration_seconds_bucket{check="db",le="+Inf"} 1
+healthcheck_metrics_duration_seconds_sum{check="db"} 0.094148065
+healthcheck_metrics_duration_seconds_count{check="db"} 1
 ```
+
+> Each registered check is one series distinguished by the `check` label, e.g.
+> `healthcheck_metrics_up{check="db"}` and `healthcheck_metrics_up{check="redis"}`,
+> instead of a separate metric name per check.
 
 #### buildInfo example
 

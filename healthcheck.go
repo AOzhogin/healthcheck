@@ -97,20 +97,17 @@ func (h *healthCheck) withMetrics() bool {
 // Add - add new check with name and notes
 func (h *healthCheck) Add(name string, notes string, e HCFunc) error {
 
-	var err error
-
 	h.checks.Mutex.Lock()
 	defer h.checks.Mutex.Unlock()
 
-	if h.withMetrics() {
-		err = h.Register(name)
-		if err != nil {
-			return err
-		}
-	}
-
 	if _, ok := h.checks.List[name]; ok {
 		return fmt.Errorf("same checker with name %s already exists", name)
+	}
+
+	if h.withMetrics() {
+		if err := h.Register(name); err != nil {
+			return err
+		}
 	}
 
 	h.checks.List[name] = CheckContext{Func: e, Notes: notes}
