@@ -1,24 +1,22 @@
 package healthcheck
 
 import (
-	"fmt"
+	"net/http"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"net/http"
-	"reflect"
 )
 
 const (
-	metricsNameSpase = "healthcheck"
+	metricsNamespace = "healthcheck"
 	metricsSubsystem = "metrics"
-	metricsHelp      = "Checking available %s"
-	metricsHelpDur   = "Checking duration %s"
+	metricLabelCheck = "check"
 	HandlerMetrics   = "/metrics"
 )
 
 var (
-	// Metrics interface implementation check fot struct metrics
+	// Metrics interface implementation check for struct metrics
 	_ Metrics = (*metrics)(nil)
 )
 
@@ -29,126 +27,104 @@ type Metrics interface {
 	Save(name string, t float64, err error) error
 }
 
-// metrics - holds data for metrics interaction
+// metrics - holds the labeled collectors and the registry they live in.
+// The check name is a label on the vectors, not part of the metric name.
 type metrics struct {
-	// mm - collectors storage for access
-	mm map[string]prometheus.Collector
+	up  *prometheus.GaugeVec
+	dur *prometheus.HistogramVec
 
 	registry *prometheus.Registry
 }
 
+// newCheckVectors builds the gauge/histogram vectors keyed by the check label.
+func newCheckVectors() (*prometheus.GaugeVec, *prometheus.HistogramVec) {
+	up := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "up",
+		Help:      "Check availability (1 = ok, 0 = error)",
+	}, []string{metricLabelCheck})
+
+	dur := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "duration_seconds",
+		Help:      "Check execution duration in seconds",
+	}, []string{metricLabelCheck})
+
+	return up, dur
+}
+
 func NewMetricsWithRegistry(r *prometheus.Registry) *metrics {
 
-	m := &metrics{
-		mm:       make(map[string]prometheus.Collector),
+	up, dur := newCheckVectors()
+	r.MustRegister(up, dur)
+
+	return &metrics{
+		up:       up,
+		dur:      dur,
 		registry: r,
 	}
-
-	return m
 
 }
 
 func NewMetrics(buildInfo, goCollector, processCollector bool) *metrics {
 
-	m := &metrics{
-		mm:       make(map[string]prometheus.Collector),
-		registry: prometheus.NewRegistry(),
-	}
+	r := prometheus.NewRegistry()
+
+	up, dur := newCheckVectors()
+	r.MustRegister(up, dur)
 
 	if buildInfo {
-		m.registry.MustRegister(
+		r.MustRegister(
 			collectors.NewBuildInfoCollector(),
 		)
 	}
 
 	if goCollector {
-		m.registry.MustRegister(
+		r.MustRegister(
 			collectors.NewGoCollector(),
 		)
 	}
 
 	if processCollector {
-		m.registry.MustRegister(
+		r.MustRegister(
 			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{ReportErrors: true}),
 		)
 	}
 
-	return m
+	return &metrics{
+		up:       up,
+		dur:      dur,
+		registry: r,
+	}
 
 }
 
-// Register - register new metrics collector
+// Register instantiates the metric series for a check so they appear in /metrics
+// immediately (gauge at 0, no observations) before the first check runs.
+// It is idempotent and never returns an error.
 func (m *metrics) Register(name string) error {
 
-	var err error
-
-	m.mm[name] = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace:   metricsNameSpase,
-		Subsystem:   metricsSubsystem,
-		Name:        name,
-		Help:        fmt.Sprintf(metricsHelp, name),
-		ConstLabels: nil,
-	})
-
-	if err = m.registry.Register(m.mm[name]); err != nil {
-		return fmt.Errorf("collector registration [%s]: %v", name, err)
-	}
-
-	m.mm[fmt.Sprintf("%s_dur", name)] = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace:   metricsNameSpase,
-		Subsystem:   metricsSubsystem,
-		Name:        fmt.Sprintf("%s_dur", name),
-		Help:        fmt.Sprintf(metricsHelpDur, name),
-		ConstLabels: nil,
-	})
-
-	if err = m.registry.Register(m.mm[fmt.Sprintf("%s_dur", name)]); err != nil {
-		return fmt.Errorf("collector registration [%s]: %v", fmt.Sprintf("%s_dur", name), err)
-	}
+	m.up.WithLabelValues(name)
+	m.dur.WithLabelValues(name)
 
 	return nil
 
 }
 
-// Save - set collector with name current value to v
+// Save records a check result: the gauge is set to 1 on success and 0 on error,
+// and the execution duration is observed in the histogram, both keyed by the
+// check label. It never returns an error.
 func (m *metrics) Save(name string, t float64, err error) error {
 
-	var (
-		ok        bool
-		collector prometheus.Collector
-	)
-
-	if collector, ok = m.mm[name]; !ok {
-		return fmt.Errorf("gauge collector with name %s - not found", name)
+	if err != nil {
+		m.up.WithLabelValues(name).Set(0)
+	} else {
+		m.up.WithLabelValues(name).Set(1)
 	}
 
-	switch collector.(type) {
-	case prometheus.Gauge:
-		{
-			switch err {
-			case nil:
-				m.mm[name].(prometheus.Gauge).Set(1)
-			default:
-				m.mm[name].(prometheus.Gauge).Set(0)
-			}
-
-		}
-	default:
-		return fmt.Errorf("save metric to collector as type Gauge %s, but collector type is %v", name, reflect.TypeOf(m.mm[name]).String())
-	}
-
-	if collector, ok = m.mm[fmt.Sprintf("%s_dur", name)]; !ok {
-		return fmt.Errorf("histogram collector with name %s - not found", name)
-	}
-
-	switch collector.(type) {
-	case prometheus.Histogram:
-		{
-			m.mm[fmt.Sprintf("%s_dur", name)].(prometheus.Histogram).Observe(t)
-		}
-	default:
-		return fmt.Errorf("save metric to collector as type Histogram %s, but collector type is %v", name, reflect.TypeOf(m.mm[name]).String())
-	}
+	m.dur.WithLabelValues(name).Observe(t)
 
 	return nil
 

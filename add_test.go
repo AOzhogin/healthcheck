@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
@@ -25,7 +24,7 @@ func TestAdd_DuplicateNameWithMetrics(t *testing.T) {
 	if err := h.Add("db", "", okCheck); err != nil {
 		t.Fatalf("first Add: %v", err)
 	}
-	// With metrics, the duplicate is caught at collector registration.
+	// With metrics enabled, the duplicate is still caught by the checks-list check.
 	if err := h.Add("db", "", okCheck); err == nil {
 		t.Error("duplicate Add with metrics should return an error")
 	}
@@ -42,8 +41,7 @@ func TestCheck_RecordsMetrics(t *testing.T) {
 	h.HandlerHealth(rec, httptest.NewRequest(http.MethodGet, HandlerHealthCheck, nil))
 
 	m := h.Metrics.(*metrics)
-	gauge := m.mm["db"].(prometheus.Gauge)
-	if v := testutil.ToFloat64(gauge); v != 1 {
+	if v := testutil.ToFloat64(m.up.WithLabelValues("db")); v != 1 {
 		t.Errorf("gauge after successful check: got %v, want 1", v)
 	}
 }
