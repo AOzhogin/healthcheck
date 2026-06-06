@@ -164,6 +164,12 @@ dependency baked in.
 Runnable examples: [`example/logging`](example/logging) (WithLogger + WithMetricsBuckets) and
 [`pkg/otelhc/example`](pkg/otelhc/example) (WithTracer via the OTel adapter).
 
+### Observability
+
+Grafana dashboards (fleet + per-service, with screenshots), Prometheus alerting and SLO/burn-rate
+rules, VictoriaMetrics Operator manifests, a k8s probe example and a minikube demo live in
+[`observability/`](observability/) — see **[observability/README.md](observability/README.md)**.
+
 ### Metrics
 
 Prometheus metrics examples

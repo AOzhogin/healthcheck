@@ -1,4 +1,4 @@
-# Observability for `github.com/AOzhogin/healthcheck`
+# Observability
 
 Ready-to-use Grafana dashboard, Prometheus/vmalert alerting rules, and VictoriaMetrics Operator
 manifests for the metrics this library exposes. Pick the plain-files path or the VM Operator path.
@@ -52,6 +52,12 @@ Two dashboards:
   the per-service detail: **Health checks** row (status, failing count, availability, duration
   quantiles + heatmap, execution rate) and a **Runtime (Go / process)** row. Variables:
   `$datasource`, `$job`, `$instance`, `$check`.
+
+![Healthcheck — Fleet dashboard](readme/overview.png)
+
+![Healthcheck — Service: health checks](readme/target_1.png)
+
+![Healthcheck — Service: Go/process runtime](readme/target_2.png)
 
 Install either way:
 
