@@ -1,0 +1,61 @@
+# VictoriaMetrics Operator alerting rules (evaluated by VMAlert).
+# Mirror of ../prometheus/healthcheck.rules.yaml. Apply with the rest of the dir:
+#   kubectl apply -k observability/victoriametrics-operator/
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: healthcheck
+  labels:
+    app.kubernetes.io/name: healthcheck
+spec:
+  groups:
+    - name: healthcheck
+      rules:
+        - alert: HealthcheckDown
+          expr: healthcheck_metrics_up == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'Health check "{{ $labels.check }}" is failing'
+            description: >-
+              Check "{{ $labels.check }}" on {{ $labels.instance }} (job {{ $labels.job }})
+              has reported down for more than 2m.
+
+        - alert: HealthcheckFlapping
+          expr: changes(healthcheck_metrics_up[10m]) > 3
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Health check "{{ $labels.check }}" is flapping'
+            description: >-
+              Check "{{ $labels.check }}" on {{ $labels.instance }} changed state more than
+              3 times in the last 10m.
+
+        - alert: HealthcheckSlow
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le, check, job, instance) (
+                rate(healthcheck_metrics_duration_seconds_bucket[5m])
+              )
+            ) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Health check "{{ $labels.check }}" p99 latency is high'
+            description: >-
+              p99 execution time of "{{ $labels.check }}" on {{ $labels.instance }} is
+              {{ $value | humanizeDuration }} (> 1s) over 10m. Tune the threshold to your SLO.
+
+        - alert: HealthcheckMetricsAbsent
+          expr: absent(healthcheck_metrics_up)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'No healthcheck metrics are exposed'
+            description: >-
+              healthcheck_metrics_up has been absent for 5m — the exporter is down or no
+              checks are registered.

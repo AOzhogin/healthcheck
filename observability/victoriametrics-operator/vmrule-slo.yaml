@@ -1,0 +1,60 @@
+# SLO recording rules + multi-window burn-rate alerts (VM Operator / VMAlert).
+# Mirror of ../prometheus/healthcheck.slo.rules.yaml. SLO target = 99.9% (budget 0.001), tunable.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: healthcheck-slo
+  labels:
+    app.kubernetes.io/name: healthcheck
+spec:
+  groups:
+    - name: healthcheck.slo.recording
+      interval: 30s
+      rules:
+        - record: check:healthcheck_error:ratio_rate5m
+          expr: 1 - avg_over_time(healthcheck_metrics_up[5m])
+        - record: check:healthcheck_error:ratio_rate30m
+          expr: 1 - avg_over_time(healthcheck_metrics_up[30m])
+        - record: check:healthcheck_error:ratio_rate1h
+          expr: 1 - avg_over_time(healthcheck_metrics_up[1h])
+        - record: check:healthcheck_error:ratio_rate6h
+          expr: 1 - avg_over_time(healthcheck_metrics_up[6h])
+        - record: check:healthcheck_duration_seconds:p99
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le, job, instance, check) (
+                rate(healthcheck_metrics_duration_seconds_bucket[5m])
+              )
+            )
+
+    - name: healthcheck.slo.alerts
+      rules:
+        - alert: HealthcheckErrorBudgetBurnFast
+          expr: |
+            check:healthcheck_error:ratio_rate1h > (14.4 * 0.001)
+            and
+            check:healthcheck_error:ratio_rate5m > (14.4 * 0.001)
+          for: 2m
+          labels:
+            severity: critical
+            slo: availability
+          annotations:
+            summary: 'Fast error-budget burn on check "{{ $labels.check }}"'
+            description: >-
+              Check "{{ $labels.check }}" ({{ $labels.instance }}) is burning the 99.9% availability
+              budget at >14.4x over 1h and 5m.
+
+        - alert: HealthcheckErrorBudgetBurnSlow
+          expr: |
+            check:healthcheck_error:ratio_rate6h > (6 * 0.001)
+            and
+            check:healthcheck_error:ratio_rate30m > (6 * 0.001)
+          for: 15m
+          labels:
+            severity: warning
+            slo: availability
+          annotations:
+            summary: 'Slow error-budget burn on check "{{ $labels.check }}"'
+            description: >-
+              Check "{{ $labels.check }}" ({{ $labels.instance }}) is burning the 99.9% availability
+              budget at >6x over 6h and 30m.

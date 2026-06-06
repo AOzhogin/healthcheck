@@ -1,0 +1,497 @@
+{
+  "uid": "healthcheck-overview",
+  "title": "Healthcheck — Service",
+  "tags": ["healthcheck", "prometheus", "victoriametrics"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "hide": 0,
+        "current": {}
+      },
+      {
+        "name": "job",
+        "label": "Job",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(healthcheck_metrics_up, job)",
+        "query": "label_values(healthcheck_metrics_up, job)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2,
+        "sort": 1,
+        "current": {}
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(healthcheck_metrics_up{job=~\"$job\"}, instance)",
+        "query": "label_values(healthcheck_metrics_up{job=~\"$job\"}, instance)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2,
+        "sort": 1,
+        "current": {}
+      },
+      {
+        "name": "check",
+        "label": "Check",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(healthcheck_metrics_up{job=~\"$job\"}, check)",
+        "query": "label_values(healthcheck_metrics_up{job=~\"$job\"}, check)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2,
+        "sort": 1,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Health checks",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Failing checks",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "count(healthcheck_metrics_up{job=~\"$job\",instance=~\"$instance\"} == 0) or vector(0)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Check status",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 1 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "FAIL", "color": "red", "index": 0 },
+                "1": { "text": "OK", "color": "green", "index": 1 }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "healthcheck_metrics_up{job=~\"$job\",instance=~\"$instance\",check=~\"$check\"}",
+          "legendFormat": "{{check}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Availability (up)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "healthcheck_metrics_up{job=~\"$job\",instance=~\"$instance\",check=~\"$check\"}",
+          "legendFormat": "{{check}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Check duration (quantiles)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 0 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.5, sum by (le, check) (rate(healthcheck_metrics_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\",check=~\"$check\"}[5m])))",
+          "legendFormat": "p50 {{check}}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.9, sum by (le, check) (rate(healthcheck_metrics_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\",check=~\"$check\"}[5m])))",
+          "legendFormat": "p90 {{check}}",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.99, sum by (le, check) (rate(healthcheck_metrics_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\",check=~\"$check\"}[5m])))",
+          "legendFormat": "p99 {{check}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "heatmap",
+      "title": "Duration distribution",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "options": { "calculate": false, "yAxis": { "unit": "s" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (le) (rate(healthcheck_metrics_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\",check=~\"$check\"}[5m]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Check execution rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (check) (rate(healthcheck_metrics_duration_seconds_count{job=~\"$job\",instance=~\"$instance\",check=~\"$check\"}[5m]))",
+          "legendFormat": "{{check}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Runtime (Go / process)",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "panels": [
+        {
+          "id": 9,
+          "type": "table",
+          "title": "Instance info",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 5, "w": 24, "x": 0, "y": 24 },
+          "options": { "showHeader": true },
+          "transformations": [
+            { "id": "organize", "options": { "excludeByName": { "Time": true, "Value": true, "__name__": true } } }
+          ],
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "go_build_info{job=~\"$job\",instance=~\"$instance\"}",
+              "format": "table",
+              "instant": true,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "Uptime",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 4, "x": 0, "y": 29 },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area" },
+          "fieldConfig": { "defaults": { "unit": "dtdurations", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "time() - process_start_time_seconds{job=~\"$job\",instance=~\"$instance\"}",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "type": "stat",
+          "title": "Restarts (1h)",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 4, "x": 4, "y": 29 },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none" },
+          "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "changes(process_start_time_seconds{job=~\"$job\",instance=~\"$instance\"}[1h])",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Goroutines",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 8, "x": 8, "y": 29 },
+          "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "go_goroutines{job=~\"$job\",instance=~\"$instance\"}",
+              "legendFormat": "goroutines",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "go_threads{job=~\"$job\",instance=~\"$instance\"}",
+              "legendFormat": "os threads",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "GC duration quantiles",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 8, "x": 16, "y": 29 },
+          "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "go_gc_duration_seconds{job=~\"$job\",instance=~\"$instance\"}",
+              "legendFormat": "q{{quantile}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Rate of objects allocated",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 8, "x": 0, "y": 36 },
+          "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "rate(go_memstats_mallocs_total{job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Number of live objects",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 8, "x": 8, "y": 36 },
+          "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "go_memstats_heap_objects{job=~\"$job\",instance=~\"$instance\"}",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Memory in off-heap",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 8, "x": 16, "y": 36 },
+          "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_mspan_inuse_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "mspan_inuse", "refId": "A" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_mspan_sys_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "mspan_sys", "refId": "B" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_mcache_inuse_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "mcache_inuse", "refId": "C" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_mcache_sys_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "mcache_sys", "refId": "D" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_buck_hash_sys_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "buck_hash_sys", "refId": "E" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_gc_sys_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "gc_sys", "refId": "F" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_other_sys_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "other_sys", "refId": "G" }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "Memory in stack",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 8, "x": 0, "y": 43 },
+          "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_stack_inuse_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "stack_inuse", "refId": "A" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_stack_sys_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "stack_sys", "refId": "B" }
+          ]
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "File descriptors",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 8, "x": 8, "y": 43 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 25 } },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "% of limit" },
+                "properties": [
+                  { "id": "unit", "value": "percent" },
+                  { "id": "max", "value": 100 },
+                  { "id": "custom.axisPlacement", "value": "right" },
+                  { "id": "custom.fillOpacity", "value": 0 }
+                ]
+              }
+            ]
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "process_open_fds{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "open (current)", "refId": "A" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "process_max_fds{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "max (limit)", "refId": "B" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "100 * (process_open_fds{job=~\"$job\",instance=~\"$instance\"} / process_max_fds{job=~\"$job\",instance=~\"$instance\"})", "legendFormat": "% of limit", "refId": "C" }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "Memory usage (stack and heap)",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 8, "x": 16, "y": 43 },
+          "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_heap_alloc_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "heap_alloc", "refId": "A" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_heap_inuse_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "heap_inuse", "refId": "B" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_stack_inuse_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "stack_inuse", "refId": "C" }
+          ]
+        },
+        {
+          "id": 19,
+          "type": "timeseries",
+          "title": "Memory usage (process)",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 12, "x": 0, "y": 50 },
+          "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "process_resident_memory_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "resident", "refId": "A" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "process_virtual_memory_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "virtual", "refId": "B" },
+            { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "go_memstats_sys_bytes{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "go_sys", "refId": "C" }
+          ]
+        },
+        {
+          "id": 20,
+          "type": "timeseries",
+          "title": "CPU (cores)",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 7, "w": 12, "x": 12, "y": 50 },
+          "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 25 } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "rate(process_cpu_seconds_total{job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

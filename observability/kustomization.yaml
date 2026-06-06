@@ -1,0 +1,24 @@
+# Apply the scrape config, alerting rules, and Grafana dashboard ConfigMap in one go:
+#   kubectl apply -k observability/
+#
+# The dashboard ConfigMap is generated from the single source of truth
+# (grafana/healthcheck-dashboard.json) — no duplicated JSON to keep in sync. The
+# grafana_dashboard label makes the Grafana sidecar auto-import it. The kustomization lives
+# at the observability/ root because kustomize forbids reading files above its directory.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - victoriametrics-operator/vmrule.yaml
+  - victoriametrics-operator/vmrule-slo.yaml
+  - victoriametrics-operator/vmservicescrape.yaml
+
+configMapGenerator:
+  - name: healthcheck-grafana-dashboard
+    files:
+      - healthcheck-dashboard.json=grafana/healthcheck-dashboard.json
+      - healthcheck-fleet-dashboard.json=grafana/healthcheck-fleet-dashboard.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true

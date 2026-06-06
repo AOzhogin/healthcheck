@@ -1,0 +1,29 @@
+# Tells the VM Operator (VMAgent) to scrape the service that exposes the healthcheck /metrics.
+# Set the selector + port to match YOUR Service.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: healthcheck
+  labels:
+    app.kubernetes.io/name: healthcheck
+spec:
+  selector:
+    matchLabels:
+      app: healthcheck-example   # <-- match your Service's labels
+  endpoints:
+    - port: http                 # <-- name of the Service port exposing /metrics
+      path: /metrics
+      interval: 30s
+# Pod-level alternative (scrape pods directly, no Service):
+# apiVersion: operator.victoriametrics.com/v1beta1
+# kind: VMPodScrape
+# metadata:
+#   name: healthcheck
+# spec:
+#   selector:
+#     matchLabels:
+#       app: healthcheck-example
+#   podMetricsEndpoints:
+#     - port: http
+#       path: /metrics
+#       interval: 30s

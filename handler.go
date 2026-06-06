@@ -23,7 +23,7 @@ func (h *healthCheck) HandlerHealth(w http.ResponseWriter, r *http.Request) {
 			h.cacheMutex.Unlock()
 		}
 	case false:
-		res = h.check()
+		res = h.check(r.Context())
 	}
 
 	w.Header().Add("Content-Type", "application/json")

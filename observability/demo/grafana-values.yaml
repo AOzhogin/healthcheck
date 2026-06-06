@@ -1,0 +1,28 @@
+# Helm values for grafana/grafana: VictoriaMetrics datasource + dashboard auto-import.
+# helm install grafana grafana/grafana -n healthcheck -f observability/demo/grafana-values.yaml
+adminUser: admin
+adminPassword: admin
+
+service:
+  type: ClusterIP
+
+# Prometheus-compatible read API of VMSingle.
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: VictoriaMetrics
+        type: prometheus
+        access: proxy
+        url: http://vmsingle-healthcheck.healthcheck.svc:8429
+        isDefault: true
+
+# The sidecar watches ConfigMaps labeled grafana_dashboard="1" (our kustomize-generated
+# ConfigMap) and imports the dashboard automatically.
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    labelValue: "1"
+    searchNamespace: ALL
+    folder: /tmp/dashboards

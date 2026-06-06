@@ -1,0 +1,69 @@
+# Prometheus / vmalert alerting rules for the github.com/AOzhogin/healthcheck library.
+# Load via Prometheus `rule_files:` or vmalert `-rule=`. The same group is mirrored as a
+# VMRule CRD in ../victoriametrics-operator/vmrule.yaml.
+#
+# Tunables: `for` durations, the p99 threshold in HealthcheckSlow, and the job regex in the
+# (commented) target-down rule. Adjust to your SLOs.
+groups:
+  - name: healthcheck
+    rules:
+      - alert: HealthcheckDown
+        expr: healthcheck_metrics_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Health check "{{ $labels.check }}" is failing'
+          description: >-
+            Check "{{ $labels.check }}" on {{ $labels.instance }} (job {{ $labels.job }})
+            has reported down (healthcheck_metrics_up == 0) for more than 2m.
+
+      - alert: HealthcheckFlapping
+        expr: changes(healthcheck_metrics_up[10m]) > 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Health check "{{ $labels.check }}" is flapping'
+          description: >-
+            Check "{{ $labels.check }}" on {{ $labels.instance }} changed state more than
+            3 times in the last 10m.
+
+      - alert: HealthcheckSlow
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, check, job, instance) (
+              rate(healthcheck_metrics_duration_seconds_bucket[5m])
+            )
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Health check "{{ $labels.check }}" p99 latency is high'
+          description: >-
+            p99 execution time of check "{{ $labels.check }}" on {{ $labels.instance }} is
+            {{ $value | humanizeDuration }} (> 1s) over the last 10m. Tune the threshold to your SLO.
+
+      - alert: HealthcheckMetricsAbsent
+        expr: absent(healthcheck_metrics_up)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'No healthcheck metrics are exposed'
+          description: >-
+            healthcheck_metrics_up has been absent for 5m — the exporter is down or no checks
+            are registered.
+
+      # Target reachability (Prometheus scrape health). `up` here is Prometheus' own per-target
+      # metric, NOT healthcheck_metrics_up. Set the job regex and uncomment to enable; kept off
+      # by default to avoid clashing with infra-wide TargetDown rules.
+      # - alert: HealthcheckTargetDown
+      #   expr: up{job=~".*healthcheck.*"} == 0
+      #   for: 2m
+      #   labels:
+      #     severity: critical
+      #   annotations:
+      #     summary: 'Healthcheck target {{ $labels.instance }} is down'
+      #     description: 'Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }}).'

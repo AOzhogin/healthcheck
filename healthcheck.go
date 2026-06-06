@@ -3,9 +3,12 @@ package healthcheck
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -62,6 +65,20 @@ type healthCheck struct {
 	liveHandler    http.HandlerFunc
 	readyHandler   http.HandlerFunc
 	startupHandler http.HandlerFunc
+
+	// metrics configuration; the Metrics implementation is built in New() after all options are
+	// applied, so WithMetricsBuckets is order-independent with WithMetrics/WithMetricsRegistry.
+	metricsEnabled          bool
+	metricsBuildInfo        bool
+	metricsGoCollector      bool
+	metricsProcessCollector bool
+	metricsRegistry         *prometheus.Registry
+	metricsBuckets          []float64
+
+	logger     *slog.Logger    // optional; when set, logs check state transitions (ok<->error)
+	prevFailed map[string]bool // last-known failed state per check, for transition logging
+
+	tracer Tracer // span per check; defaults to a no-op (no tracing dependency in core)
 }
 
 func New(ops ...HCOption) *healthCheck {
@@ -79,10 +96,22 @@ func New(ops ...HCOption) *healthCheck {
 		ctx:                context.Background(),
 		httpAddr:           ":8080",
 		pprofEnabled:       true,
+		prevFailed:         make(map[string]bool),
+		tracer:             nopTracer{},
 	}
 
 	for _, option := range ops {
 		option(h)
+	}
+
+	// Build the metrics implementation after all options are applied so bucket/registry/collector
+	// choices are independent of option order.
+	if h.metricsEnabled && h.Metrics == nil {
+		if h.metricsRegistry != nil {
+			h.Metrics = NewMetricsWithRegistry(h.metricsRegistry, h.metricsBuckets...)
+		} else {
+			h.Metrics = NewMetrics(h.metricsBuildInfo, h.metricsGoCollector, h.metricsProcessCollector, h.metricsBuckets...)
+		}
 	}
 
 	return h
@@ -137,7 +166,7 @@ func (h *healthCheck) Start() {
 					}
 				case <-time.After(h.routineInterval):
 					{
-						cache = h.check()
+						cache = h.check(h.ctx)
 						h.cacheMutex.Lock()
 						h.cache = cache
 						h.cacheMutex.Unlock()
@@ -163,14 +192,18 @@ func (h *healthCheck) Shutdown() {
 
 }
 
-// check - main proc with process all checks
-func (h *healthCheck) check() checkResults {
+// check - run all checks. base seeds the timeout context and carries trace context: the request
+// context for a synchronous /health, or h.ctx for the background routine.
+func (h *healthCheck) check(base context.Context) checkResults {
 
 	h.checks.Mutex.Lock()
 	defer h.checks.Mutex.Unlock()
 
-	ctx, done := context.WithTimeout(h.ctx, h.timeOut)
+	ctx, done := context.WithTimeout(base, h.timeOut)
 	defer done()
+
+	ctx, runSpan := h.tracer.Start(ctx, "healthcheck.run")
+	defer runSpan.End()
 
 	var (
 		err      error
@@ -186,9 +219,17 @@ func (h *healthCheck) check() checkResults {
 
 	for name, value := range h.checks.List {
 
+		cctx, span := h.tracer.Start(ctx, "healthcheck/"+name)
+		span.SetAttr("healthcheck.check", name)
+		if value.Notes != "" {
+			span.SetAttr("healthcheck.notes", value.Notes)
+		}
+
 		startDt = time.Now()
-		err = value.Func(ctx)
+		err = value.Func(cctx)
 		execTime = time.Since(startDt)
+
+		span.SetAttr("healthcheck.duration_ms", execTime.Milliseconds())
 
 		r.LastAction = time.Now()
 		r.Status = h.checkStatusSuccess
@@ -205,20 +246,60 @@ func (h *healthCheck) check() checkResults {
 		if err != nil {
 
 			r.Status = err.Error()
+			span.RecordError(err)
+			span.SetAttr("healthcheck.status", "error")
 
 			if res.Status != h.checkStatusError {
 				res.Status = h.checkStatusError
 				res.code = h.statusCodeError
 			}
 
+		} else {
+			span.SetAttr("healthcheck.status", "ok")
 		}
+
+		span.End()
+
+		h.logTransition(cctx, name, err, execTime)
 
 		res.Checks[name] = r
 
 	}
 
+	runSpan.SetAttr("healthcheck.status", res.Status)
+
 	return res
 
+}
+
+// logTransition logs a check's state change (ok<->error) when a logger is configured.
+// Baseline is "ok": a check that starts failing logs an error; recovery logs at info.
+// Called within check() under checks.Mutex, so prevFailed access is safe.
+func (h *healthCheck) logTransition(ctx context.Context, name string, err error, dur time.Duration) {
+
+	if h.logger == nil {
+		return
+	}
+
+	failed := err != nil
+	if h.prevFailed[name] == failed {
+		return
+	}
+	h.prevFailed[name] = failed
+
+	if failed {
+		h.logger.LogAttrs(ctx, slog.LevelError, "healthcheck: check failed",
+			slog.String("check", name),
+			slog.String("error", err.Error()),
+			slog.Duration("duration", dur),
+		)
+		return
+	}
+
+	h.logger.LogAttrs(ctx, slog.LevelInfo, "healthcheck: check recovered",
+		slog.String("check", name),
+		slog.Duration("duration", dur),
+	)
 }
 
 // SetHandlerLive sets a custom handler for the /live (liveness) endpoint.

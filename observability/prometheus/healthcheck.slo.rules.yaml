@@ -1,0 +1,63 @@
+# SLO recording rules + multi-window burn-rate alerts for the healthcheck library.
+# Availability SLO is expressed as the fraction of time each check reports up.
+#
+# Tunable: the SLO objective. Default target = 99.9% => error budget = 0.001.
+# To change the target, edit the thresholds in the alert exprs (they are `<burn-factor> * 0.001`).
+# Burn factors follow the Google SRE multi-window method:
+#   fast page  : 14.4x over 1h AND 5m   (burns ~2% of a 30d budget in 1h)
+#   slow ticket:  6x  over 6h AND 30m
+#
+# Recording rules keep all labels (check, job, instance) so alerts/dashboards stay per-check.
+groups:
+  - name: healthcheck.slo.recording
+    interval: 30s
+    rules:
+      # Per-check error ratio (fraction of time down) over several windows.
+      - record: check:healthcheck_error:ratio_rate5m
+        expr: 1 - avg_over_time(healthcheck_metrics_up[5m])
+      - record: check:healthcheck_error:ratio_rate30m
+        expr: 1 - avg_over_time(healthcheck_metrics_up[30m])
+      - record: check:healthcheck_error:ratio_rate1h
+        expr: 1 - avg_over_time(healthcheck_metrics_up[1h])
+      - record: check:healthcheck_error:ratio_rate6h
+        expr: 1 - avg_over_time(healthcheck_metrics_up[6h])
+      # Precomputed p99 duration per check (speeds up the dashboard panel).
+      - record: check:healthcheck_duration_seconds:p99
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, job, instance, check) (
+              rate(healthcheck_metrics_duration_seconds_bucket[5m])
+            )
+          )
+
+  - name: healthcheck.slo.alerts
+    rules:
+      - alert: HealthcheckErrorBudgetBurnFast
+        expr: |
+          check:healthcheck_error:ratio_rate1h > (14.4 * 0.001)
+          and
+          check:healthcheck_error:ratio_rate5m > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: 'Fast error-budget burn on check "{{ $labels.check }}"'
+          description: >-
+            Check "{{ $labels.check }}" ({{ $labels.instance }}) is burning the 99.9% availability
+            budget at >14.4x over 1h and 5m. At this rate a 30d budget is gone in ~2 days.
+
+      - alert: HealthcheckErrorBudgetBurnSlow
+        expr: |
+          check:healthcheck_error:ratio_rate6h > (6 * 0.001)
+          and
+          check:healthcheck_error:ratio_rate30m > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: warning
+          slo: availability
+        annotations:
+          summary: 'Slow error-budget burn on check "{{ $labels.check }}"'
+          description: >-
+            Check "{{ $labels.check }}" ({{ $labels.instance }}) is burning the 99.9% availability
+            budget at >6x over 6h and 30m. Investigate before it escalates.

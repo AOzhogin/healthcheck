@@ -1,0 +1,15 @@
+# Scrapes everything matched by VMServiceScrape/VMPodScrape and remote-writes to VMSingle.
+# selectAllByDefault keeps the demo simple (picks up our VMServiceScrape automatically).
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: healthcheck
+spec:
+  selectAllByDefault: true
+  scrapeInterval: 15s
+  remoteWrite:
+    - url: "http://vmsingle-healthcheck.healthcheck.svc:8429/api/v1/write"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
