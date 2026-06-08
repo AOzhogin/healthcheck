@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,37 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// bucketCount returns the cumulative count of the duration histogram bucket with upper bound le
+// for a given check, or an error if that bucket boundary is not present.
+func bucketCount(m *metrics, check string, le float64) (uint64, error) {
+	families, err := m.registry.Gather()
+	if err != nil {
+		return 0, err
+	}
+	for _, mf := range families {
+		if mf.GetName() != "healthcheck_metrics_duration_seconds" {
+			continue
+		}
+		for _, metric := range mf.GetMetric() {
+			match := false
+			for _, lp := range metric.GetLabel() {
+				if lp.GetName() == metricLabelCheck && lp.GetValue() == check {
+					match = true
+				}
+			}
+			if !match {
+				continue
+			}
+			for _, b := range metric.GetHistogram().GetBucket() {
+				if b.GetUpperBound() == le {
+					return b.GetCumulativeCount(), nil
+				}
+			}
+		}
+	}
+	return 0, fmt.Errorf("bucket le=%v not found for check %q", le, check)
+}
 
 func TestWithHTTPAddress(t *testing.T) {
 	h := &healthCheck{httpAddr: ":8080"}
@@ -50,19 +82,41 @@ func TestWithTimeOut(t *testing.T) {
 }
 
 func TestWithMetrics(t *testing.T) {
-	h := &healthCheck{}
-	WithMetrics(true, true, true)(h)
+	// Metrics are built in New() after options are applied.
+	h := New(WithMetrics(true, true, true))
 	if h.Metrics == nil {
 		t.Error("expected Metrics to be set")
 	}
 }
 
 func TestWithMetricsRegistry(t *testing.T) {
-	h := &healthCheck{}
 	r := prometheus.NewRegistry()
-	WithMetricsRegistry(r)(h)
+	h := New(WithMetricsRegistry(r))
 	if h.Metrics == nil {
 		t.Error("expected Metrics to be set with registry")
+	}
+}
+
+func TestWithMetricsBuckets(t *testing.T) {
+	buckets := []float64{0.1, 0.5, 1, 5}
+	h := New(WithMetrics(false, false, false), WithMetricsBuckets(buckets...))
+	if h.Metrics == nil {
+		t.Fatal("expected Metrics to be set")
+	}
+	// Order-independent: buckets option after WithMetrics still applies.
+	m := h.Metrics.(*metrics)
+	_ = m.Save("db", 0.2, nil) // falls in the 0.5 bucket
+
+	count, err := bucketCount(m, "db", 0.5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 observation in le=0.5 bucket, got %d", count)
+	}
+	// A default bucket boundary that we removed (0.005) must NOT exist.
+	if _, err := bucketCount(m, "db", 0.005); err == nil {
+		t.Error("expected custom buckets to replace defaults (le=0.005 should be absent)")
 	}
 }
 

@@ -1,0 +1,12 @@
+# Single-node VictoriaMetrics TSDB for the demo (managed by the VM Operator).
+# Exposes a Prometheus-compatible read API and a remote-write endpoint on :8429.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: healthcheck
+spec:
+  retentionPeriod: "1d"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"

@@ -125,6 +125,7 @@ WithErrorStatus(status int)             // set HTTP status code when any checker
 WithTimeOut(timeout time.Duration)      // set global timeout for all checkers (default: 30s)
 WithMetrics(buildInfo, goCollector, processCollector bool) // enable Prometheus metrics
 WithMetricsRegistry(r *prometheus.Registry) // use external Prometheus registry for metrics
+WithMetricsBuckets(buckets ...float64)  // custom duration histogram buckets (default: Prometheus DefBuckets)
 WithBackCheck(interval time.Duration)   // run checks in background with specified interval
 WithCheckStatusSuccess(status string)   // set string status for successful check (default: "ok")
 WithCheckStatusError(status string)     // set string status for failed check (default: "error")
@@ -132,7 +133,42 @@ WithHTTPAddress(addr string)            // set HTTP listen address for StartHTTP
 WithBasicAuth(user, pass string)        // enable HTTP Basic Auth on the served endpoints
 WithMiddleware(mw func(http.Handler) http.Handler) // apply custom middleware to served endpoints
 WithoutPProf()                          // disable the pprof (/debug/) endpoint (enabled by default)
+WithLogger(logger *slog.Logger)         // log check state transitions (ok<->error); off when nil
+WithTracer(t Tracer)                    // span per check; default no-op (see otelhc adapter)
 ```
+
+### Logging & tracing
+
+Both are opt-in via injected dependencies — the core has no logging framework or tracing
+dependency baked in.
+
+- **`WithLogger(*slog.Logger)`** logs a check's state transitions: error-level when a check starts
+  failing, info-level on recovery (attributes: `check`, `error`, `duration`).
+- **`WithTracer(Tracer)`** opens a span per check (`healthcheck/<name>`) and passes its context to the
+  check func, so your check code nests its own spans. `Tracer`/`Span` are small interfaces in this
+  package; the OpenTelemetry adapter lives in the separate `otelhc` module so OTel stays out of the
+  core's dependencies:
+
+  ```go
+  import (
+      "github.com/AOzhogin/healthcheck"
+      "github.com/AOzhogin/healthcheck/pkg/otelhc"
+      "go.opentelemetry.io/otel"
+  )
+
+  hc := healthcheck.New(
+      healthcheck.WithTracer(otelhc.New(otel.GetTracerProvider())),
+  )
+  ```
+
+Runnable examples: [`example/logging`](example/logging) (WithLogger + WithMetricsBuckets) and
+[`pkg/otelhc/example`](pkg/otelhc/example) (WithTracer via the OTel adapter).
+
+### Observability
+
+Grafana dashboards (fleet + per-service, with screenshots), Prometheus alerting and SLO/burn-rate
+rules, VictoriaMetrics Operator manifests, a k8s probe example and a minikube demo live in
+[`observability/`](observability/) — see **[observability/README.md](observability/README.md)**.
 
 ### Metrics
 
@@ -160,7 +196,18 @@ healthcheck_metrics_duration_seconds_bucket{check="db",le="10"} 1
 healthcheck_metrics_duration_seconds_bucket{check="db",le="+Inf"} 1
 healthcheck_metrics_duration_seconds_sum{check="db"} 0.094148065
 healthcheck_metrics_duration_seconds_count{check="db"} 1
+# HELP healthcheck_metrics_last_success_timestamp_seconds Unix timestamp of the last successful check
+# TYPE healthcheck_metrics_last_success_timestamp_seconds gauge
+healthcheck_metrics_last_success_timestamp_seconds{check="db"} 1.704573e+09
+# HELP healthcheck_metrics_errors_total Total failed checks by reason
+# TYPE healthcheck_metrics_errors_total counter
+healthcheck_metrics_errors_total{check="db",reason="timeout"} 2
 ```
+
+`last_success_timestamp_seconds` enables staleness alerting (`time() - ... > N`). `errors_total`
+carries a low-cardinality `reason` label: `timeout` / `canceled` are derived from the context, and a
+check may set its own reason by returning an error that implements `interface{ Reason() string }`;
+everything else is `error`.
 
 > Each registered check is one series distinguished by the `check` label, e.g.
 > `healthcheck_metrics_up{check="db"}` and `healthcheck_metrics_up{check="redis"}`,

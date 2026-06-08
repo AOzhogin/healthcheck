@@ -1,7 +1,10 @@
 package healthcheck
 
 import (
+	"context"
+	"errors"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -9,10 +12,11 @@ import (
 )
 
 const (
-	metricsNamespace = "healthcheck"
-	metricsSubsystem = "metrics"
-	metricLabelCheck = "check"
-	HandlerMetrics   = "/metrics"
+	metricsNamespace  = "healthcheck"
+	metricsSubsystem  = "metrics"
+	metricLabelCheck  = "check"
+	metricLabelReason = "reason"
+	HandlerMetrics    = "/metrics"
 )
 
 var (
@@ -30,50 +34,73 @@ type Metrics interface {
 // metrics - holds the labeled collectors and the registry they live in.
 // The check name is a label on the vectors, not part of the metric name.
 type metrics struct {
-	up  *prometheus.GaugeVec
-	dur *prometheus.HistogramVec
+	up          *prometheus.GaugeVec
+	dur         *prometheus.HistogramVec
+	lastSuccess *prometheus.GaugeVec
+	errors      *prometheus.CounterVec
 
 	registry *prometheus.Registry
 }
 
-// newCheckVectors builds the gauge/histogram vectors keyed by the check label.
-func newCheckVectors() (*prometheus.GaugeVec, *prometheus.HistogramVec) {
-	up := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: metricsNamespace,
-		Subsystem: metricsSubsystem,
-		Name:      "up",
-		Help:      "Check availability (1 = ok, 0 = error)",
-	}, []string{metricLabelCheck})
-
-	dur := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: metricsNamespace,
-		Subsystem: metricsSubsystem,
-		Name:      "duration_seconds",
-		Help:      "Check execution duration in seconds",
-	}, []string{metricLabelCheck})
-
-	return up, dur
+// checkVectors bundles the per-check collectors keyed by the check label.
+type checkVectors struct {
+	up          *prometheus.GaugeVec
+	dur         *prometheus.HistogramVec
+	lastSuccess *prometheus.GaugeVec
+	errors      *prometheus.CounterVec
 }
 
-func NewMetricsWithRegistry(r *prometheus.Registry) *metrics {
-
-	up, dur := newCheckVectors()
-	r.MustRegister(up, dur)
-
-	return &metrics{
-		up:       up,
-		dur:      dur,
-		registry: r,
+// newCheckVectors builds the per-check collectors. buckets sets the duration histogram buckets;
+// nil/empty uses the Prometheus default buckets.
+func newCheckVectors(buckets []float64) checkVectors {
+	return checkVectors{
+		up: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "up",
+			Help:      "Check availability (1 = ok, 0 = error)",
+		}, []string{metricLabelCheck}),
+		dur: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "duration_seconds",
+			Help:      "Check execution duration in seconds",
+			Buckets:   buckets,
+		}, []string{metricLabelCheck}),
+		lastSuccess: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "last_success_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful check",
+		}, []string{metricLabelCheck}),
+		errors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "errors_total",
+			Help:      "Total failed checks by reason",
+		}, []string{metricLabelCheck, metricLabelReason}),
 	}
-
 }
 
-func NewMetrics(buildInfo, goCollector, processCollector bool) *metrics {
+func newMetricsFromVectors(r *prometheus.Registry, v checkVectors) *metrics {
+	r.MustRegister(v.up, v.dur, v.lastSuccess, v.errors)
+	return &metrics{
+		up:          v.up,
+		dur:         v.dur,
+		lastSuccess: v.lastSuccess,
+		errors:      v.errors,
+		registry:    r,
+	}
+}
+
+func NewMetricsWithRegistry(r *prometheus.Registry, buckets ...float64) *metrics {
+	return newMetricsFromVectors(r, newCheckVectors(buckets))
+}
+
+func NewMetrics(buildInfo, goCollector, processCollector bool, buckets ...float64) *metrics {
 
 	r := prometheus.NewRegistry()
-
-	up, dur := newCheckVectors()
-	r.MustRegister(up, dur)
+	m := newMetricsFromVectors(r, newCheckVectors(buckets))
 
 	if buildInfo {
 		r.MustRegister(
@@ -93,11 +120,7 @@ func NewMetrics(buildInfo, goCollector, processCollector bool) *metrics {
 		)
 	}
 
-	return &metrics{
-		up:       up,
-		dur:      dur,
-		registry: r,
-	}
+	return m
 
 }
 
@@ -108,26 +131,49 @@ func (m *metrics) Register(name string) error {
 
 	m.up.WithLabelValues(name)
 	m.dur.WithLabelValues(name)
+	m.lastSuccess.WithLabelValues(name)
 
 	return nil
 
 }
 
-// Save records a check result: the gauge is set to 1 on success and 0 on error,
-// and the execution duration is observed in the histogram, both keyed by the
-// check label. It never returns an error.
+// Save records a check result keyed by the check label: the up gauge is set to 1 on success
+// (and the last-success timestamp updated) or 0 on error (and errors_total incremented with a
+// classified reason); the execution duration is observed in the histogram. It never returns an error.
 func (m *metrics) Save(name string, t float64, err error) error {
 
 	if err != nil {
 		m.up.WithLabelValues(name).Set(0)
+		m.errors.WithLabelValues(name, classifyReason(err)).Inc()
 	} else {
 		m.up.WithLabelValues(name).Set(1)
+		m.lastSuccess.WithLabelValues(name).Set(float64(time.Now().Unix()))
 	}
 
 	m.dur.WithLabelValues(name).Observe(t)
 
 	return nil
 
+}
+
+// classifyReason maps a check error to a low-cardinality reason for the errors_total label.
+// A check may control the reason by returning an error that implements interface{ Reason() string };
+// otherwise context deadline/cancel are recognised, and everything else is "error".
+func classifyReason(err error) string {
+	var re interface{ Reason() string }
+	if errors.As(err, &re) {
+		if r := re.Reason(); r != "" {
+			return r
+		}
+	}
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	default:
+		return "error"
+	}
 }
 
 // HandlerMetrics - handler for incoming requests on endpoint like /metrics

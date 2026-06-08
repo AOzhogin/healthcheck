@@ -2,6 +2,7 @@ package healthcheck
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -33,17 +34,52 @@ func WithTimeOut(timeout time.Duration) HCOption {
 	}
 }
 
-// WithMetricsRegistry - collect prometheus metrics with external registry
+// WithMetricsRegistry - collect prometheus metrics with an external registry.
+// The metrics implementation is built in New() after all options are applied.
 func WithMetricsRegistry(r *prometheus.Registry) HCOption {
 	return func(check *healthCheck) {
-		check.Metrics = NewMetricsWithRegistry(r)
+		check.metricsEnabled = true
+		check.metricsRegistry = r
 	}
 }
 
-// WithMetrics - collect prometheus metrics
+// WithMetrics - collect prometheus metrics.
+// The metrics implementation is built in New() after all options are applied.
 func WithMetrics(buildInfo, goCollector, processCollector bool) HCOption {
 	return func(check *healthCheck) {
-		check.Metrics = NewMetrics(buildInfo, goCollector, processCollector)
+		check.metricsEnabled = true
+		check.metricsBuildInfo = buildInfo
+		check.metricsGoCollector = goCollector
+		check.metricsProcessCollector = processCollector
+	}
+}
+
+// WithMetricsBuckets sets custom buckets for the check duration histogram
+// (healthcheck_metrics_duration_seconds). Empty uses the Prometheus default buckets.
+// Effective only together with WithMetrics/WithMetricsRegistry; order-independent.
+func WithMetricsBuckets(buckets ...float64) HCOption {
+	return func(check *healthCheck) {
+		check.metricsBuckets = buckets
+	}
+}
+
+// WithLogger enables structured logging of check state transitions (ok<->error) via the given
+// *slog.Logger: an error-level line when a check starts failing, info-level when it recovers,
+// with check name, error and duration attributes. No logging when nil (the default).
+func WithLogger(logger *slog.Logger) HCOption {
+	return func(check *healthCheck) {
+		check.logger = logger
+	}
+}
+
+// WithTracer enables a span per check via the given Tracer (e.g. the otelhc adapter). The span
+// context is passed to each check func so user code can nest its own spans. nil keeps the default
+// no-op tracer.
+func WithTracer(t Tracer) HCOption {
+	return func(check *healthCheck) {
+		if t != nil {
+			check.tracer = t
+		}
 	}
 }
 

@@ -23,7 +23,7 @@ func main() {
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, unix.SIGTERM)
 
 	hc := healthcheck.New(
-		healthcheck.WithMetrics(false, false, true),
+		healthcheck.WithMetrics(true, true, true),
 		healthcheck.WithBackCheck(5*time.Second),
 		healthcheck.WithContext(ctx),
 	)

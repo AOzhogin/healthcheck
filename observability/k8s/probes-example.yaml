@@ -1,0 +1,39 @@
+# Reference ONLY — how to wire k8s probes to the endpoints this library serves via StartHTTPServer
+# (/live, /ready, /startup). The library does NOT own your Deployment; copy the probe stanzas into
+# your own manifest/Helm chart and adjust the port name to match your container.
+#
+# Semantics (k8s):
+#   startupProbe   gates liveness/readiness until the app has finished booting (slow starts).
+#   livenessProbe  -> /live    : keep it cheap; failing restarts the pod. Override with a custom
+#                                 SetHandlerLive so a dependency blip does NOT restart all pods.
+#   readinessProbe -> /ready   : failing removes the pod from Service endpoints (no restart).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: my-service }
+  template:
+    metadata:
+      labels: { app: my-service }
+    spec:
+      containers:
+        - name: app
+          image: my-service:latest
+          ports:
+            - name: http          # the port your healthcheck.StartHTTPServer listens on
+              containerPort: 8080
+          startupProbe:
+            httpGet: { path: /startup, port: http }
+            failureThreshold: 30   # 30 * periodSeconds = max boot time before giving up
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /live, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
