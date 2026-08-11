@@ -3,6 +3,7 @@ package healthcheck
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -394,6 +395,10 @@ func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 // checks (like /health) when no custom handler is set.
 // When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
 // When WithMiddleware is set, the custom middleware is applied first, then Basic Auth (if enabled).
+// When WithTLS is set, the server serves HTTPS and keeps the keypair in sync with the files on disk:
+// a rotation is picked up for new handshakes without restarting the process. An unusable keypair at
+// startup is returned as an error; a failed rotation later on is logged and counted, and the previous
+// certificate keeps being served.
 func (h *healthCheck) StartHTTPServer() error {
 	mux := http.NewServeMux()
 	mux.Handle(HandlerHealthCheck, h.wrapHandler(http.HandlerFunc(h.HandlerHealth)))
@@ -406,5 +411,37 @@ func (h *healthCheck) StartHTTPServer() error {
 	if h.pprofEnabled {
 		mux.Handle(HandlerDebug, h.wrapHandler(http.HandlerFunc(h.HandlerPProf)))
 	}
-	return http.ListenAndServe(h.httpAddr, mux)
+
+	srv := &http.Server{Addr: h.httpAddr, Handler: mux}
+
+	if !h.withTLS() {
+		if h.tlsCertFile != "" || h.tlsKeyFile != "" {
+			return errors.New("healthcheck: tls: WithTLS needs both a certificate file and a key file")
+		}
+
+		return srv.ListenAndServe()
+	}
+
+	var tm *tlsMetrics
+	if r := h.promRegistry(); r != nil {
+		var err error
+		if tm, err = newTLSMetrics(r); err != nil {
+			return fmt.Errorf("healthcheck: tls: register metrics: %w", err)
+		}
+	}
+
+	reloader, err := newCertReloader(h.tlsCertFile, h.tlsKeyFile, h.logger, tm, h.tlsReloadInterval)
+	if err != nil {
+		return fmt.Errorf("healthcheck: tls: load keypair: %w", err)
+	}
+	defer func() { _ = reloader.close() }()
+
+	if err := reloader.start(h.ctx); err != nil {
+		return fmt.Errorf("healthcheck: tls: watch certificate: %w", err)
+	}
+
+	srv.TLSConfig = h.buildTLSConfig(reloader.GetCertificate)
+
+	// Empty paths on purpose: the certificate comes from TLSConfig.GetCertificate.
+	return srv.ListenAndServeTLS("", "")
 }

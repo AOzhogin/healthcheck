@@ -1,6 +1,10 @@
 package healthcheck
 
-import "time"
+import (
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // tlsMetrics holds the certificate lifecycle collectors. Every method is nil-safe so the reloader
 // runs unchanged when metrics are disabled.
@@ -22,4 +26,8 @@ func (m *tlsMetrics) reloadFailed() {
 	if m == nil {
 		return
 	}
+}
+
+func newTLSMetrics(*prometheus.Registry) (*tlsMetrics, error) {
+	return &tlsMetrics{}, nil
 }
