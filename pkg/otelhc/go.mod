@@ -1,6 +1,6 @@
 module github.com/AOzhogin/healthcheck/pkg/otelhc
 
-go 1.24
+go 1.26.0
 
 require (
 	github.com/AOzhogin/healthcheck v1.3.0
