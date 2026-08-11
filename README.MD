@@ -117,6 +117,52 @@ if err := hc.StartHTTPServer(); err != nil {
 }
 ```
 
+#### TLS / HTTPS
+
+`WithTLS` makes `StartHTTPServer` serve HTTPS. The keypair is re-read whenever the files change on
+disk and swapped in for new handshakes, so a rotation needs **no restart** — which is what you want
+when cert-manager writes a renewed certificate into a mounted secret.
+
+```go
+hc := healthcheck.New(
+    healthcheck.WithHTTPAddress(":8443"),
+    healthcheck.WithTLS("/etc/tls/tls.crt", "/etc/tls/tls.key"),
+)
+```
+
+How it behaves:
+
+* the pair is loaded once at startup — an unusable certificate makes `StartHTTPServer` return an
+  error instead of failing at the first handshake;
+* changes are detected through filesystem events on the **directories** holding the files, plus a
+  periodic rescan (`WithTLSReloadInterval`, default 5m) as a safety net. Watching directories is what
+  makes a Kubernetes projected-secret update work: kubelet renames the `..data` symlink, which
+  replaces the inode behind the file and would kill a file-level watch;
+* a broken or half-written rotation never takes the endpoint down — the load error is logged and
+  counted, and the previous certificate keeps being served until a valid pair appears;
+* connections already established keep the certificate they handshook with.
+
+Filesystem watching covers Linux, Windows, macOS, BSD and illumos. On a platform without a native
+backend the library falls back to the periodic rescan alone rather than refusing to serve HTTPS.
+
+Use `WithTLSConfig` for the rest of the TLS settings (minimum version, cipher suites, ALPN); the
+certificate source is always taken from `WithTLS`:
+
+```go
+healthcheck.WithTLSConfig(&tls.Config{MinVersion: tls.VersionTLS13})
+```
+
+Pair it with `CertExpiryCheck` so a certificate that silently stopped rotating fails `/ready` before
+clients start seeing handshake errors:
+
+```go
+hc.Add("tls-cert", "serving certificate", healthcheck.CertExpiryCheck("/etc/tls/tls.crt", 14*24*time.Hour))
+```
+
+A full manifest — cert-manager `Certificate`, the volume mount, and probes with `scheme: HTTPS` — is
+in [observability/k8s/tls-example.yaml](observability/k8s/tls-example.yaml); a runnable service is in
+[example/tls](example/tls).
+
 #### Options
 
 ```go
@@ -135,6 +181,9 @@ WithMiddleware(mw func(http.Handler) http.Handler) // apply custom middleware to
 WithoutPProf()                          // disable the pprof (/debug/) endpoint (enabled by default)
 WithLogger(logger *slog.Logger)         // log check state transitions (ok<->error); off when nil
 WithTracer(t Tracer)                    // span per check; default no-op (see otelhc adapter)
+WithTLS(certFile, keyFile string)       // serve HTTPS and hot-reload the keypair when the files change
+WithTLSConfig(cfg *tls.Config)          // base TLS settings; the certificate source is always WithTLS
+WithTLSReloadInterval(d time.Duration)  // safety-net rescan on top of filesystem events (default: 5m, 0 disables)
 ```
 
 ### Logging & tracing
@@ -212,6 +261,26 @@ everything else is `error`.
 > Each registered check is one series distinguished by the `check` label, e.g.
 > `healthcheck_metrics_up{check="db"}` and `healthcheck_metrics_up{check="redis"}`,
 > instead of a separate metric name per check.
+
+#### tls certificate metrics (with `WithTLS`)
+
+```
+# HELP healthcheck_tls_cert_expiry_timestamp_seconds Unix timestamp of the NotAfter date of the served certificate
+# TYPE healthcheck_tls_cert_expiry_timestamp_seconds gauge
+healthcheck_tls_cert_expiry_timestamp_seconds 1.7934048e+09
+
+# HELP healthcheck_tls_cert_reload_total Total certificate reloads triggered by a change on disk
+# TYPE healthcheck_tls_cert_reload_total counter
+healthcheck_tls_cert_reload_total{status="ok"} 3
+healthcheck_tls_cert_reload_total{status="error"} 1
+
+# HELP healthcheck_tls_cert_reload_timestamp_seconds Unix timestamp of the last successful certificate reload
+# TYPE healthcheck_tls_cert_reload_timestamp_seconds gauge
+healthcheck_tls_cert_reload_timestamp_seconds 1.7549e+09
+```
+
+Alert on `healthcheck_tls_cert_expiry_timestamp_seconds - time() < 7 * 86400` (expiry approaching) and
+on `increase(healthcheck_tls_cert_reload_total{status="error"}[1h]) > 0` (rotations are failing).
 
 #### buildInfo example
 

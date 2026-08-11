@@ -1,0 +1,62 @@
+# Reference ONLY — how to serve the healthcheck endpoints over HTTPS with a cert-manager certificate
+# and have the library pick up rotations without a restart. The library does NOT own your Deployment;
+# copy what you need into your own manifest/Helm chart.
+#
+# How the rotation reaches the process:
+#   cert-manager renews the Certificate -> writes the Secret -> kubelet swaps the projected volume by
+#   renaming the ..data symlink -> the library's watcher sees the directory change, re-reads the pair
+#   and serves it on the next handshake. Established connections keep the old certificate.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-service-tls
+spec:
+  secretName: my-service-tls      # mounted below
+  duration: 2160h                 # 90d
+  renewBefore: 360h               # 15d — must stay above the CertExpiryCheck threshold in the app
+  dnsNames:
+    - my-service.default.svc
+  issuerRef:
+    name: my-issuer
+    kind: ClusterIssuer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: my-service }
+  template:
+    metadata:
+      labels: { app: my-service }
+    spec:
+      containers:
+        - name: app
+          image: my-service:latest
+          ports:
+            - name: https         # the port your healthcheck.StartHTTPServer listens on
+              containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/tls
+              readOnly: true
+          startupProbe:
+            httpGet: { path: /startup, port: https, scheme: HTTPS }
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            # kubelet does not verify the server certificate on HTTPS probes, so a self-signed or
+            # internal-CA certificate needs no extra configuration here.
+            httpGet: { path: /live, port: https, scheme: HTTPS }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /ready, port: https, scheme: HTTPS }
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: tls
+          secret:
+            secretName: my-service-tls
