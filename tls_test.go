@@ -99,6 +99,90 @@ func TestCertReloader_MismatchedPairFailsFast(t *testing.T) {
 	require.Error(t, err, "a cert that does not match the key must not be accepted")
 }
 
+func TestCertReloader_ReloadIfChanged_PicksUpNewCert(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 0)
+	require.NoError(t, err)
+
+	writeSelfSigned(t, certPath, keyPath, "second", time.Now().Add(24*time.Hour))
+	r.reloadIfChanged()
+
+	cert, err := r.GetCertificate(nil)
+	require.NoError(t, err)
+	require.Equal(t, "second", cert.Leaf.Subject.CommonName)
+}
+
+func TestCertReloader_ReloadIfChanged_IgnoresUnchangedFiles(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 0)
+	require.NoError(t, err)
+
+	before, err := r.GetCertificate(nil)
+	require.NoError(t, err)
+
+	r.reloadIfChanged()
+
+	after, err := r.GetCertificate(nil)
+	require.NoError(t, err)
+	require.Same(t, before, after, "unchanged files must not cause a new certificate to be built")
+}
+
+func TestCertReloader_ReloadIfChanged_KeepsOldCertOnGarbage(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 0)
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(certPath, []byte("not a pem file"), 0o600))
+	r.reloadIfChanged()
+
+	cert, err := r.GetCertificate(nil)
+	require.NoError(t, err)
+	require.Equal(t, "first", cert.Leaf.Subject.CommonName, "a broken file must never evict a working keypair")
+}
+
+// A torn update — the certificate replaced while the key is still the old one — must be retried, not
+// remembered as the current state.
+func TestCertReloader_ReloadIfChanged_RecoversAfterTornWrite(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 0)
+	require.NoError(t, err)
+
+	stagingDir := t.TempDir()
+	newCert, newKey := newSelfSignedPair(t, stagingDir, "second", time.Now().Add(24*time.Hour))
+
+	// Only the certificate lands first: it no longer matches the key on disk.
+	copyFile(t, newCert, certPath)
+	r.reloadIfChanged()
+
+	cert, err := r.GetCertificate(nil)
+	require.NoError(t, err)
+	require.Equal(t, "first", cert.Leaf.Subject.CommonName)
+
+	// The key catches up; the next pass must succeed.
+	copyFile(t, newKey, keyPath)
+	r.reloadIfChanged()
+
+	cert, err = r.GetCertificate(nil)
+	require.NoError(t, err)
+	require.Equal(t, "second", cert.Leaf.Subject.CommonName)
+}
+
+func copyFile(t *testing.T, src, dst string) {
+	t.Helper()
+
+	b, err := os.ReadFile(src)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dst, b, 0o600))
+}
+
 func TestFingerprint_ChangesWithContent(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))

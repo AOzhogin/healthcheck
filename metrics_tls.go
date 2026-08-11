@@ -11,3 +11,15 @@ func (m *tlsMetrics) certLoaded(time.Time) {
 		return
 	}
 }
+
+func (m *tlsMetrics) reloadSucceeded() {
+	if m == nil {
+		return
+	}
+}
+
+func (m *tlsMetrics) reloadFailed() {
+	if m == nil {
+		return
+	}
+}

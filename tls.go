@@ -102,6 +102,30 @@ func (c *certReloader) reload() error {
 	return nil
 }
 
+// reloadIfChanged is the watch-loop entry point. It skips events that did not change the bytes on
+// disk and never replaces a working keypair with a broken one: a failed load is logged and counted,
+// and the previous certificate keeps being served until a valid pair appears.
+func (c *certReloader) reloadIfChanged() {
+	if fp, err := fingerprint(c.certFile, c.keyFile); err == nil && fp == c.fp {
+		return
+	}
+
+	if err := c.reload(); err != nil {
+		c.metrics.reloadFailed()
+
+		if c.logger != nil {
+			c.logger.Error("healthcheck: tls: certificate reload failed, keeping the previous keypair",
+				slog.String("cert", c.certFile),
+				slog.String("error", err.Error()),
+			)
+		}
+
+		return
+	}
+
+	c.metrics.reloadSucceeded()
+}
+
 // fingerprint hashes both files so identical content — a rewritten but unchanged secret, or a
 // duplicate filesystem event — does not trigger a pointless reload.
 func fingerprint(files ...string) ([sha256.Size]byte, error) {
