@@ -1,16 +1,19 @@
 package healthcheck
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -199,4 +202,166 @@ func TestFingerprint_ChangesWithContent(t *testing.T) {
 	after, err := fingerprint(certPath, keyPath)
 	require.NoError(t, err)
 	require.NotEqual(t, before, after)
+}
+
+// writeProjectedSecret lays dir out the way kubelet lays out a projected secret volume:
+//
+//	dir/..gen1/tls.crt          real files, one directory per generation
+//	dir/..data -> ..gen1        symlink, replaced atomically on update
+//	dir/tls.crt -> ..data/tls.crt   the stable path the application opens
+//
+// This is exactly what a cert-manager rotation looks like inside a pod, and it is why the watcher
+// has to watch the directory instead of the files.
+func writeProjectedSecret(t *testing.T, dir, generation, cn string) {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the projected-secret layout relies on symlinks, which need extra privileges on Windows")
+	}
+
+	genDir := filepath.Join(dir, ".."+generation)
+	require.NoError(t, os.MkdirAll(genDir, 0o755))
+	writeSelfSigned(t, filepath.Join(genDir, "tls.crt"), filepath.Join(genDir, "tls.key"), cn, time.Now().Add(24*time.Hour))
+
+	// kubelet creates ..data_tmp and renames it over ..data; rename is atomic within a filesystem.
+	tmpLink := filepath.Join(dir, "..data_tmp")
+	require.NoError(t, os.Symlink(".."+generation, tmpLink))
+	require.NoError(t, os.Rename(tmpLink, filepath.Join(dir, "..data")))
+
+	for _, name := range []string{"tls.crt", "tls.key"} {
+		link := filepath.Join(dir, name)
+		if _, err := os.Lstat(link); err == nil {
+			continue // the stable symlink survives generation swaps
+		}
+		require.NoError(t, os.Symlink(filepath.Join("..data", name), link))
+	}
+}
+
+// servedCN returns the common name of the certificate the reloader currently holds.
+func servedCN(t *testing.T, r *certReloader) string {
+	t.Helper()
+
+	cert, err := r.GetCertificate(nil)
+	require.NoError(t, err)
+
+	return cert.Leaf.Subject.CommonName
+}
+
+// requireClosesWithin asserts that close returns inside d. close waits on the watch goroutine, so a
+// goroutine that ignores the stop signal shows up here as a precise failure instead of hanging the
+// package until the go test timeout.
+func requireClosesWithin(t *testing.T, r *certReloader, d time.Duration) {
+	t.Helper()
+
+	done := make(chan error, 1)
+	go func() { done <- r.close() }()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(d):
+		t.Fatal("close did not return: the watch goroutine is still running")
+	}
+}
+
+func TestCertReloader_WatchPicksUpFileRewrite(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 0)
+	require.NoError(t, err)
+	require.NoError(t, r.start(context.Background()))
+	defer requireClosesWithin(t, r, 2*time.Second)
+
+	writeSelfSigned(t, certPath, keyPath, "second", time.Now().Add(24*time.Hour))
+
+	require.Eventually(t, func() bool { return servedCN(t, r) == "second" }, 5*time.Second, 20*time.Millisecond)
+}
+
+func TestCertReloader_WatchPicksUpProjectedSecretSwap(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectedSecret(t, dir, "gen1", "first")
+
+	certPath := filepath.Join(dir, "tls.crt")
+	keyPath := filepath.Join(dir, "tls.key")
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 0)
+	require.NoError(t, err)
+	require.NoError(t, r.start(context.Background()))
+	defer requireClosesWithin(t, r, 2*time.Second)
+
+	require.Equal(t, "first", servedCN(t, r))
+
+	writeProjectedSecret(t, dir, "gen2", "second")
+
+	require.Eventually(t, func() bool { return servedCN(t, r) == "second" }, 5*time.Second, 20*time.Millisecond)
+}
+
+// The periodic rescan must catch a change even when no filesystem event ever arrives.
+func TestCertReloader_PeriodicRescanCatchesMissedEvents(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 50*time.Millisecond)
+	require.NoError(t, err)
+	require.NoError(t, r.start(context.Background()))
+	defer requireClosesWithin(t, r, 2*time.Second)
+
+	// Write outside the watched directory and move the result in with a plain rename; whatever events
+	// this produces, the ticker alone is enough to notice.
+	staging := t.TempDir()
+	newCert, newKey := newSelfSignedPair(t, staging, "second", time.Now().Add(24*time.Hour))
+	copyFile(t, newCert, certPath)
+	copyFile(t, newKey, keyPath)
+
+	require.Eventually(t, func() bool { return servedCN(t, r) == "second" }, 5*time.Second, 20*time.Millisecond)
+}
+
+// On a platform without an fsnotify backend (plan9, js/wasm, appengine) NewWatcher fails at runtime.
+// The reloader must keep working off the periodic rescan instead of refusing to serve.
+func TestCertReloader_PollOnlyFallback(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 50*time.Millisecond)
+	require.NoError(t, err)
+
+	// No watcher at all — exactly the state start() falls back to.
+	r.startLoop(context.Background())
+	defer requireClosesWithin(t, r, 2*time.Second)
+
+	writeSelfSigned(t, certPath, keyPath, "second", time.Now().Add(24*time.Hour))
+
+	require.Eventually(t, func() bool { return servedCN(t, r) == "second" }, 5*time.Second, 20*time.Millisecond)
+}
+
+// Falling back with the periodic rescan switched off would leave nothing driving reloads at all.
+func TestCertReloader_FallbackForcesAnInterval(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, 0)
+	require.NoError(t, err)
+
+	r.fallbackToPolling(errors.New("fsnotify not supported on the current platform"))
+
+	require.Equal(t, defaultTLSReloadInterval, r.interval)
+}
+
+// Cancelling the context must stop the watch goroutine. close waits for it, so if the goroutine
+// ignored the cancellation this test fails on the timeout instead of passing silently.
+func TestCertReloader_ContextCancelStopsWatcher(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	r, err := newCertReloader(certPath, keyPath, nil, nil, time.Minute)
+	require.NoError(t, err)
+	require.NoError(t, r.start(ctx))
+
+	cancel()
+
+	requireClosesWithin(t, r, 2*time.Second)
+	requireClosesWithin(t, r, 2*time.Second) // close must be idempotent
 }
