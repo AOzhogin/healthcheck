@@ -2,6 +2,7 @@ package healthcheck
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -60,6 +61,13 @@ type healthCheck struct {
 
 	pprofEnabled bool // when true, StartHTTPServer registers the pprof (/debug/) endpoint
 
+	// TLS: when both files are set, StartHTTPServer serves HTTPS and reloads the keypair whenever the
+	// files change on disk, so a rotation needs no restart.
+	tlsCertFile       string
+	tlsKeyFile        string
+	tlsConfig         *tls.Config   // optional base config; the certificate source is always overridden
+	tlsReloadInterval time.Duration // safety-net rescan interval; 0 relies on filesystem events only
+
 	// custom handlers for the k8s probe endpoints; nil means use the default (HandlerHealth).
 	// Read once at route registration in StartHTTPServer; set them before calling it.
 	liveHandler    http.HandlerFunc
@@ -96,6 +104,7 @@ func New(ops ...HCOption) *healthCheck {
 		ctx:                context.Background(),
 		httpAddr:           ":8080",
 		pprofEnabled:       true,
+		tlsReloadInterval:  defaultTLSReloadInterval,
 		prevFailed:         make(map[string]bool),
 		tracer:             nopTracer{},
 	}
@@ -329,6 +338,42 @@ func (h *healthCheck) resolveHandler(custom http.HandlerFunc) http.Handler {
 		return custom
 	}
 	return http.HandlerFunc(h.HandlerHealth)
+}
+
+// withTLS reports whether StartHTTPServer should serve HTTPS.
+func (h *healthCheck) withTLS() bool {
+	return h.tlsCertFile != "" && h.tlsKeyFile != ""
+}
+
+// buildTLSConfig clones the caller's base config (or falls back to a TLS 1.2 default) and wires the
+// hot-reloading keypair in. Static Certificates are cleared: leaving them would let crypto/tls serve
+// a stale certificate and quietly defeat the reload.
+func (h *healthCheck) buildTLSConfig(getCert func(*tls.ClientHelloInfo) (*tls.Certificate, error)) *tls.Config {
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if h.tlsConfig != nil {
+		cfg = h.tlsConfig.Clone()
+		if cfg.MinVersion == 0 {
+			cfg.MinVersion = tls.VersionTLS12
+		}
+	}
+
+	cfg.Certificates = nil
+	cfg.GetCertificate = getCert
+
+	return cfg
+}
+
+// promRegistry returns the registry the metrics are exposed on, or nil when metrics are disabled.
+// It covers both WithMetricsRegistry (caller-owned registry) and WithMetrics (registry built in New).
+func (h *healthCheck) promRegistry() *prometheus.Registry {
+	if h.metricsRegistry != nil {
+		return h.metricsRegistry
+	}
+	if m, ok := h.Metrics.(*metrics); ok {
+		return m.registry
+	}
+
+	return nil
 }
 
 // wrapHandler applies custom middleware (if set) and then Basic Auth (if enabled) to next.
