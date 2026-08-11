@@ -135,3 +135,31 @@ func TestHTTPServer_TLS_OnlyOneFileIsAnError(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "key file")
 }
+
+func TestHTTPServer_TLS_MetricsReflectRotation(t *testing.T) {
+	const addr = ":18106"
+
+	dir := t.TempDir()
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", time.Now().Add(24*time.Hour))
+
+	h := New(WithHTTPAddress(addr), WithTLS(certPath, keyPath), WithMetrics(false, false, false))
+	startTLSServer(t, h, addr)
+
+	writeSelfSigned(t, certPath, keyPath, "second", time.Now().Add(48*time.Hour))
+	require.Eventually(t, func() bool { return servedCNOverWire(t, addr) == "second" }, 5*time.Second, 50*time.Millisecond)
+
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // self-signed test cert
+		DisableKeepAlives: true,
+	}}
+
+	resp, err := client.Get("https://127.0.0.1" + addr + HandlerMetrics)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.Contains(t, string(body), `healthcheck_tls_cert_reload_total{status="ok"} 1`)
+	require.Contains(t, string(body), "healthcheck_tls_cert_expiry_timestamp_seconds")
+}
