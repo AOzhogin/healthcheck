@@ -8,8 +8,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"go.uber.org/goleak"
 )
 
 func serveHealth(t *testing.T, h *healthCheck) int {
@@ -19,9 +17,25 @@ func serveHealth(t *testing.T, h *healthCheck) int {
 	return rec.Code
 }
 
-func TestBackgroundRoutine_PopulatesCacheAndShutdownStops(t *testing.T) {
-	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+// waitStopped asserts that wait returns within d. The background routine's WaitGroup is only done
+// once the goroutine has returned, so this verifies the routine actually stopped instead of leaking.
+func waitStopped(t *testing.T, wait func(), d time.Duration) {
+	t.Helper()
 
+	done := make(chan struct{})
+	go func() {
+		wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(d):
+		t.Fatal("background routine did not stop")
+	}
+}
+
+func TestBackgroundRoutine_PopulatesCacheAndShutdownStops(t *testing.T) {
 	h := New(WithBackCheck(10 * time.Millisecond))
 	if err := h.Add("ok", "", okCheck); err != nil {
 		t.Fatal(err)
@@ -34,12 +48,10 @@ func TestBackgroundRoutine_PopulatesCacheAndShutdownStops(t *testing.T) {
 		t.Errorf("cached health after tick: got %d, want 200", code)
 	}
 
-	h.Shutdown() // must stop the background goroutine (goleak verifies no leak)
+	waitStopped(t, h.Shutdown, time.Second) // Shutdown must stop the background goroutine
 }
 
 func TestBackgroundRoutine_ContextCancelStops(t *testing.T) {
-	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
-
 	ctx, cancel := context.WithCancel(context.Background())
 	h := New(WithBackCheck(10*time.Millisecond), WithContext(ctx))
 	if err := h.Add("ok", "", okCheck); err != nil {
@@ -48,12 +60,12 @@ func TestBackgroundRoutine_ContextCancelStops(t *testing.T) {
 
 	h.Start()
 	time.Sleep(30 * time.Millisecond)
-	cancel() // cancelling the context must stop the routine; goleak (with retry) confirms
+	cancel() // cancelling the context must stop the routine, without Shutdown being called
+
+	waitStopped(t, h.wg.Wait, time.Second)
 }
 
 func TestBackgroundRoutine_ReflectsFailureOverTime(t *testing.T) {
-	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
-
 	var down atomic.Bool
 	h := New(WithBackCheck(10 * time.Millisecond))
 	if err := h.Add("dep", "", func(context.Context) error {
@@ -66,7 +78,7 @@ func TestBackgroundRoutine_ReflectsFailureOverTime(t *testing.T) {
 	}
 
 	h.Start()
-	defer h.Shutdown()
+	defer waitStopped(t, h.Shutdown, time.Second)
 
 	time.Sleep(40 * time.Millisecond)
 	if code := serveHealth(t, h); code != http.StatusOK {

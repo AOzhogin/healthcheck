@@ -2,6 +2,8 @@ package healthcheck
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -60,6 +62,13 @@ type healthCheck struct {
 
 	pprofEnabled bool // when true, StartHTTPServer registers the pprof (/debug/) endpoint
 
+	// TLS: when both files are set, StartHTTPServer serves HTTPS and reloads the keypair whenever the
+	// files change on disk, so a rotation needs no restart.
+	tlsCertFile       string
+	tlsKeyFile        string
+	tlsConfig         *tls.Config   // optional base config; the certificate source is always overridden
+	tlsReloadInterval time.Duration // safety-net rescan interval; 0 relies on filesystem events only
+
 	// custom handlers for the k8s probe endpoints; nil means use the default (HandlerHealth).
 	// Read once at route registration in StartHTTPServer; set them before calling it.
 	liveHandler    http.HandlerFunc
@@ -96,6 +105,7 @@ func New(ops ...HCOption) *healthCheck {
 		ctx:                context.Background(),
 		httpAddr:           ":8080",
 		pprofEnabled:       true,
+		tlsReloadInterval:  defaultTLSReloadInterval,
 		prevFailed:         make(map[string]bool),
 		tracer:             nopTracer{},
 	}
@@ -331,6 +341,42 @@ func (h *healthCheck) resolveHandler(custom http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(h.HandlerHealth)
 }
 
+// withTLS reports whether StartHTTPServer should serve HTTPS.
+func (h *healthCheck) withTLS() bool {
+	return h.tlsCertFile != "" && h.tlsKeyFile != ""
+}
+
+// buildTLSConfig clones the caller's base config (or falls back to a TLS 1.2 default) and wires the
+// hot-reloading keypair in. Static Certificates are cleared: leaving them would let crypto/tls serve
+// a stale certificate and quietly defeat the reload.
+func (h *healthCheck) buildTLSConfig(getCert func(*tls.ClientHelloInfo) (*tls.Certificate, error)) *tls.Config {
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if h.tlsConfig != nil {
+		cfg = h.tlsConfig.Clone()
+		if cfg.MinVersion == 0 {
+			cfg.MinVersion = tls.VersionTLS12
+		}
+	}
+
+	cfg.Certificates = nil
+	cfg.GetCertificate = getCert
+
+	return cfg
+}
+
+// promRegistry returns the registry the metrics are exposed on, or nil when metrics are disabled.
+// It covers both WithMetricsRegistry (caller-owned registry) and WithMetrics (registry built in New).
+func (h *healthCheck) promRegistry() *prometheus.Registry {
+	if h.metricsRegistry != nil {
+		return h.metricsRegistry
+	}
+	if m, ok := h.Metrics.(*metrics); ok {
+		return m.registry
+	}
+
+	return nil
+}
+
 // wrapHandler applies custom middleware (if set) and then Basic Auth (if enabled) to next.
 func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 	if h.customMiddleware != nil {
@@ -349,6 +395,10 @@ func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 // checks (like /health) when no custom handler is set.
 // When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
 // When WithMiddleware is set, the custom middleware is applied first, then Basic Auth (if enabled).
+// When WithTLS is set, the server serves HTTPS and keeps the keypair in sync with the files on disk:
+// a rotation is picked up for new handshakes without restarting the process. An unusable keypair at
+// startup is returned as an error; a failed rotation later on is logged and counted, and the previous
+// certificate keeps being served.
 func (h *healthCheck) StartHTTPServer() error {
 	mux := http.NewServeMux()
 	mux.Handle(HandlerHealthCheck, h.wrapHandler(http.HandlerFunc(h.HandlerHealth)))
@@ -361,5 +411,37 @@ func (h *healthCheck) StartHTTPServer() error {
 	if h.pprofEnabled {
 		mux.Handle(HandlerDebug, h.wrapHandler(http.HandlerFunc(h.HandlerPProf)))
 	}
-	return http.ListenAndServe(h.httpAddr, mux)
+
+	srv := &http.Server{Addr: h.httpAddr, Handler: mux}
+
+	if !h.withTLS() {
+		if h.tlsCertFile != "" || h.tlsKeyFile != "" {
+			return errors.New("healthcheck: tls: WithTLS needs both a certificate file and a key file")
+		}
+
+		return srv.ListenAndServe()
+	}
+
+	var tm *tlsMetrics
+	if r := h.promRegistry(); r != nil {
+		var err error
+		if tm, err = newTLSMetrics(r); err != nil {
+			return fmt.Errorf("healthcheck: tls: register metrics: %w", err)
+		}
+	}
+
+	reloader, err := newCertReloader(h.tlsCertFile, h.tlsKeyFile, h.logger, tm, h.tlsReloadInterval)
+	if err != nil {
+		return fmt.Errorf("healthcheck: tls: load keypair: %w", err)
+	}
+	defer func() { _ = reloader.close() }()
+
+	if err := reloader.start(h.ctx); err != nil {
+		return fmt.Errorf("healthcheck: tls: watch certificate: %w", err)
+	}
+
+	srv.TLSConfig = h.buildTLSConfig(reloader.GetCertificate)
+
+	// Empty paths on purpose: the certificate comes from TLSConfig.GetCertificate.
+	return srv.ListenAndServeTLS("", "")
 }

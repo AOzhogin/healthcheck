@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -194,5 +195,76 @@ func TestStartHTTPServer(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("unexpected status code: got %d", resp.StatusCode)
+	}
+}
+
+func TestWithTLS(t *testing.T) {
+	h := New(WithTLS("/certs/tls.crt", "/certs/tls.key"))
+
+	if h.tlsCertFile != "/certs/tls.crt" || h.tlsKeyFile != "/certs/tls.key" {
+		t.Fatalf("unexpected tls files: %q %q", h.tlsCertFile, h.tlsKeyFile)
+	}
+	if !h.withTLS() {
+		t.Fatal("withTLS must report true when both files are set")
+	}
+}
+
+func TestWithTLS_RequiresBothFiles(t *testing.T) {
+	h := New(WithTLS("/certs/tls.crt", ""))
+
+	if h.withTLS() {
+		t.Fatal("withTLS must report false when the key file is missing")
+	}
+}
+
+func TestWithTLSReloadInterval(t *testing.T) {
+	h := New()
+	if h.tlsReloadInterval != defaultTLSReloadInterval {
+		t.Fatalf("default reload interval = %v, want %v", h.tlsReloadInterval, defaultTLSReloadInterval)
+	}
+
+	h = New(WithTLSReloadInterval(0))
+	if h.tlsReloadInterval != 0 {
+		t.Fatal("zero must disable the periodic rescan")
+	}
+}
+
+func TestBuildTLSConfig_Defaults(t *testing.T) {
+	h := New(WithTLS("/certs/tls.crt", "/certs/tls.key"))
+
+	getCert := func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, nil }
+	cfg := h.buildTLSConfig(getCert)
+
+	if cfg.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("MinVersion = %x, want TLS 1.2", cfg.MinVersion)
+	}
+	if cfg.GetCertificate == nil {
+		t.Fatal("GetCertificate must be wired to the reloader")
+	}
+}
+
+func TestBuildTLSConfig_KeepsUserSettingsButOverridesCertSource(t *testing.T) {
+	base := &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		NextProtos:   []string{"h2"},
+		Certificates: []tls.Certificate{{}}, // must be dropped: the reloader owns the certificate
+	}
+
+	h := New(WithTLS("/certs/tls.crt", "/certs/tls.key"), WithTLSConfig(base))
+
+	getCert := func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, nil }
+	cfg := h.buildTLSConfig(getCert)
+
+	if cfg.MinVersion != tls.VersionTLS13 {
+		t.Fatalf("MinVersion = %x, want TLS 1.3", cfg.MinVersion)
+	}
+	if len(cfg.NextProtos) != 1 || cfg.NextProtos[0] != "h2" {
+		t.Fatalf("NextProtos = %v, want [h2]", cfg.NextProtos)
+	}
+	if cfg.Certificates != nil {
+		t.Fatal("static Certificates must be cleared so hot reload is not bypassed")
+	}
+	if len(base.Certificates) != 1 {
+		t.Fatal("the caller's config must not be mutated")
 	}
 }

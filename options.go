@@ -2,6 +2,7 @@ package healthcheck
 
 import (
 	"context"
+	"crypto/tls"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -147,5 +148,35 @@ func WithBasicAuth(username, password string) HCOption {
 func WithMiddleware(mw func(http.Handler) http.Handler) HCOption {
 	return func(check *healthCheck) {
 		check.customMiddleware = mw
+	}
+}
+
+// WithTLS makes StartHTTPServer serve HTTPS using the given PEM certificate and key files.
+// The pair is re-read whenever the files change on disk and swapped in for new handshakes, so a
+// rotation — cert-manager writing a new certificate into a mounted secret, for example — needs no
+// restart. Connections already established keep the certificate they handshook with.
+// Both paths are required; setting only one makes StartHTTPServer return an error.
+func WithTLS(certFile, keyFile string) HCOption {
+	return func(check *healthCheck) {
+		check.tlsCertFile = certFile
+		check.tlsKeyFile = keyFile
+	}
+}
+
+// WithTLSConfig sets the base tls.Config for StartHTTPServer — minimum version, cipher suites, ALPN.
+// The config is cloned, and GetCertificate together with Certificates is always replaced by the
+// hot-reloading keypair from WithTLS. Without this option the default is MinVersion TLS 1.2.
+func WithTLSConfig(cfg *tls.Config) HCOption {
+	return func(check *healthCheck) {
+		check.tlsConfig = cfg
+	}
+}
+
+// WithTLSReloadInterval sets how often the certificate files are rescanned in addition to filesystem
+// events (default 5m). The rescan is a safety net for events lost on remounts or on filesystems with
+// unreliable notifications; zero disables it and relies on events only.
+func WithTLSReloadInterval(d time.Duration) HCOption {
+	return func(check *healthCheck) {
+		check.tlsReloadInterval = d
 	}
 }

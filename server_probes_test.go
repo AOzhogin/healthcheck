@@ -10,8 +10,8 @@ import (
 )
 
 // startServer boots StartHTTPServer for h on addr in a goroutine and waits briefly for it to listen.
-// The HTTP server is intentionally not shut down (no graceful shutdown in scope), so these tests
-// must not be wrapped with goleak.
+// The HTTP server is intentionally not shut down (no graceful shutdown in scope), so it keeps
+// running for the rest of the package's tests.
 func startServer(t *testing.T, h *healthCheck) {
 	t.Helper()
 	go func() {

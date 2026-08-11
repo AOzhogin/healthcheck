@@ -1,12 +1,12 @@
 module github.com/AOzhogin/healthcheck
 
-go 1.24
+go 1.26.0
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/prometheus/client_golang v1.17.0
 	github.com/stretchr/testify v1.9.0
-	go.uber.org/goleak v1.3.0
-	golang.org/x/sys v0.11.0
+	golang.org/x/sys v0.13.0
 )
 
 require (
