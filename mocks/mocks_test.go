@@ -65,7 +65,7 @@ type MockHealthCheck_Add_Call struct {
 //   - name string
 //   - notes string
 //   - e healthcheck.HCFunc
-func (_e *MockHealthCheck_Expecter) Add(name any, notes any, e any) *MockHealthCheck_Add_Call {
+func (_e *MockHealthCheck_Expecter) Add(name interface{}, notes interface{}, e interface{}) *MockHealthCheck_Add_Call {
 	return &MockHealthCheck_Add_Call{Call: _e.mock.On("Add", name, notes, e)}
 }
 
@@ -116,7 +116,7 @@ type MockHealthCheck_HandlerHealth_Call struct {
 // HandlerHealth is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *MockHealthCheck_Expecter) HandlerHealth(w any, r any) *MockHealthCheck_HandlerHealth_Call {
+func (_e *MockHealthCheck_Expecter) HandlerHealth(w interface{}, r interface{}) *MockHealthCheck_HandlerHealth_Call {
 	return &MockHealthCheck_HandlerHealth_Call{Call: _e.mock.On("HandlerHealth", w, r)}
 }
 
@@ -162,7 +162,7 @@ type MockHealthCheck_HandlerMetrics_Call struct {
 // HandlerMetrics is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *MockHealthCheck_Expecter) HandlerMetrics(w any, r any) *MockHealthCheck_HandlerMetrics_Call {
+func (_e *MockHealthCheck_Expecter) HandlerMetrics(w interface{}, r interface{}) *MockHealthCheck_HandlerMetrics_Call {
 	return &MockHealthCheck_HandlerMetrics_Call{Call: _e.mock.On("HandlerMetrics", w, r)}
 }
 
@@ -208,7 +208,7 @@ type MockHealthCheck_HandlerPProf_Call struct {
 // HandlerPProf is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *MockHealthCheck_Expecter) HandlerPProf(w any, r any) *MockHealthCheck_HandlerPProf_Call {
+func (_e *MockHealthCheck_Expecter) HandlerPProf(w interface{}, r interface{}) *MockHealthCheck_HandlerPProf_Call {
 	return &MockHealthCheck_HandlerPProf_Call{Call: _e.mock.On("HandlerPProf", w, r)}
 }
 
@@ -253,7 +253,7 @@ type MockHealthCheck_SetHandlerLive_Call struct {
 
 // SetHandlerLive is a helper method to define mock.On call
 //   - handler http.HandlerFunc
-func (_e *MockHealthCheck_Expecter) SetHandlerLive(handler any) *MockHealthCheck_SetHandlerLive_Call {
+func (_e *MockHealthCheck_Expecter) SetHandlerLive(handler interface{}) *MockHealthCheck_SetHandlerLive_Call {
 	return &MockHealthCheck_SetHandlerLive_Call{Call: _e.mock.On("SetHandlerLive", handler)}
 }
 
@@ -293,7 +293,7 @@ type MockHealthCheck_SetHandlerReady_Call struct {
 
 // SetHandlerReady is a helper method to define mock.On call
 //   - handler http.HandlerFunc
-func (_e *MockHealthCheck_Expecter) SetHandlerReady(handler any) *MockHealthCheck_SetHandlerReady_Call {
+func (_e *MockHealthCheck_Expecter) SetHandlerReady(handler interface{}) *MockHealthCheck_SetHandlerReady_Call {
 	return &MockHealthCheck_SetHandlerReady_Call{Call: _e.mock.On("SetHandlerReady", handler)}
 }
 
@@ -333,7 +333,7 @@ type MockHealthCheck_SetHandlerStartup_Call struct {
 
 // SetHandlerStartup is a helper method to define mock.On call
 //   - handler http.HandlerFunc
-func (_e *MockHealthCheck_Expecter) SetHandlerStartup(handler any) *MockHealthCheck_SetHandlerStartup_Call {
+func (_e *MockHealthCheck_Expecter) SetHandlerStartup(handler interface{}) *MockHealthCheck_SetHandlerStartup_Call {
 	return &MockHealthCheck_SetHandlerStartup_Call{Call: _e.mock.On("SetHandlerStartup", handler)}
 }
 
@@ -479,7 +479,7 @@ type MockMCPServer_Handler_Call struct {
 
 // Handler is a helper method to define mock.On call
 //   - src healthcheck.MCPSource
-func (_e *MockMCPServer_Expecter) Handler(src any) *MockMCPServer_Handler_Call {
+func (_e *MockMCPServer_Expecter) Handler(src interface{}) *MockMCPServer_Handler_Call {
 	return &MockMCPServer_Handler_Call{Call: _e.mock.On("Handler", src)}
 }
 
@@ -603,7 +603,7 @@ type MockMetrics_Register_Call struct {
 
 // Register is a helper method to define mock.On call
 //   - name string
-func (_e *MockMetrics_Expecter) Register(name any) *MockMetrics_Register_Call {
+func (_e *MockMetrics_Expecter) Register(name interface{}) *MockMetrics_Register_Call {
 	return &MockMetrics_Register_Call{Call: _e.mock.On("Register", name)}
 }
 
@@ -656,7 +656,7 @@ type MockMetrics_Save_Call struct {
 //   - name string
 //   - t float64
 //   - err error
-func (_e *MockMetrics_Expecter) Save(name any, t any, err any) *MockMetrics_Save_Call {
+func (_e *MockMetrics_Expecter) Save(name interface{}, t interface{}, err interface{}) *MockMetrics_Save_Call {
 	return &MockMetrics_Save_Call{Call: _e.mock.On("Save", name, t, err)}
 }
 
@@ -758,7 +758,7 @@ type MockTracer_Start_Call struct {
 // Start is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *MockTracer_Expecter) Start(ctx any, name any) *MockTracer_Start_Call {
+func (_e *MockTracer_Expecter) Start(ctx interface{}, name interface{}) *MockTracer_Start_Call {
 	return &MockTracer_Start_Call{Call: _e.mock.On("Start", ctx, name)}
 }
 
@@ -863,7 +863,7 @@ type MockSpan_RecordError_Call struct {
 
 // RecordError is a helper method to define mock.On call
 //   - err error
-func (_e *MockSpan_Expecter) RecordError(err any) *MockSpan_RecordError_Call {
+func (_e *MockSpan_Expecter) RecordError(err interface{}) *MockSpan_RecordError_Call {
 	return &MockSpan_RecordError_Call{Call: _e.mock.On("RecordError", err)}
 }
 
@@ -904,7 +904,7 @@ type MockSpan_SetAttr_Call struct {
 // SetAttr is a helper method to define mock.On call
 //   - key string
 //   - value any
-func (_e *MockSpan_Expecter) SetAttr(key any, value any) *MockSpan_SetAttr_Call {
+func (_e *MockSpan_Expecter) SetAttr(key interface{}, value interface{}) *MockSpan_SetAttr_Call {
 	return &MockSpan_SetAttr_Call{Call: _e.mock.On("SetAttr", key, value)}
 }
 
