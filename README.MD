@@ -7,6 +7,7 @@ Simple health check library with more options
 1. Health check for k8s style
 2. Full answer customization
 3. Simple metrics support
+4. Optional MCP endpoint for AI agents (separate `mcphc` module)
 
 ### Installation
 
@@ -212,6 +213,32 @@ dependency baked in.
 
 Runnable examples: [`example/logging`](example/logging) (WithLogger + WithMetricsBuckets) and
 [`pkg/otelhc/example`](pkg/otelhc/example) (WithTracer via the OTel adapter).
+
+### MCP
+
+Optional [Model Context Protocol](https://modelcontextprotocol.io) endpoint so an AI agent (Claude Code,
+an in-cluster agent) can inspect your service: configuration, check status, and re-run a single check.
+The MCP SDK lives in the separate `mcphc` module, so the core gains no dependencies:
+
+```
+go get github.com/AOzhogin/healthcheck/pkg/mcphc
+```
+
+```go
+hc := healthcheck.New(
+    healthcheck.WithBasicAuth(user, pass),
+    healthcheck.WithMCP(mcphc.New()), // served at /mcp (Streamable HTTP)
+)
+```
+
+- Resources: `healthcheck://config`, `healthcheck://checks`.
+- Tools: `get_config`, `get_status`, `list_checks`, `run_check` (argument `name`).
+- With your own mux use `mux.Handle(healthcheck.HandlerMCP, hc.MCPHandler())` and add auth yourself.
+- Security: `/mcp` goes through Basic Auth/middleware when configured; do not expose it unprotected
+  outside localhost. `mcphc.WithoutRunCheck()` removes `run_check` for heavy checks.
+- With MCP enabled, check functions may run concurrently.
+
+Runnable example with Docker and connection instructions: [`pkg/mcphc/example`](pkg/mcphc/example).
 
 ### Observability
 
