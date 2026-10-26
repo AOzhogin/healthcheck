@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -66,8 +67,9 @@ type healthCheck struct {
 	// files change on disk, so a rotation needs no restart.
 	tlsCertFile       string
 	tlsKeyFile        string
-	tlsConfig         *tls.Config   // optional base config; the certificate source is always overridden
-	tlsReloadInterval time.Duration // safety-net rescan interval; 0 relies on filesystem events only
+	tlsConfig         *tls.Config                  // optional base config; the certificate source is always overridden
+	tlsReloadInterval time.Duration                // safety-net rescan interval; 0 relies on filesystem events only
+	tlsReloader       atomic.Pointer[certReloader] // reloader of the running TLS server; nil before it starts
 
 	// custom handlers for the k8s probe endpoints; nil means use the default (HandlerHealth).
 	// Read once at route registration in StartHTTPServer; set them before calling it.
@@ -434,6 +436,7 @@ func (h *healthCheck) StartHTTPServer() error {
 	if err != nil {
 		return fmt.Errorf("healthcheck: tls: load keypair: %w", err)
 	}
+	h.tlsReloader.Store(reloader)
 	defer func() { _ = reloader.close() }()
 
 	if err := reloader.start(h.ctx); err != nil {

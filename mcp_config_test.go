@@ -1,0 +1,138 @@
+package healthcheck
+
+import (
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func decodeMCPConfig(t *testing.T, h *healthCheck) map[string]any {
+	t.Helper()
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(h.mcpConfig(), &m))
+
+	return m
+}
+
+func TestMCPConfig_Defaults(t *testing.T) {
+	m := decodeMCPConfig(t, New())
+
+	assert.Equal(t, ":8080", m["http_addr"])
+	assert.Equal(t, "30s", m["timeout"])
+	assert.Equal(t, map[string]any{"enabled": false, "interval": "0s"}, m["background_check"])
+	assert.Equal(t, map[string]any{"success": float64(200), "error": float64(503)}, m["status_codes"])
+	assert.Equal(t, map[string]any{"success": "ok", "error": "error"}, m["check_status"])
+	assert.Equal(t, false, m["basic_auth"])
+	assert.Equal(t, false, m["custom_middleware"])
+	assert.Equal(t, true, m["pprof"])
+	assert.Equal(t, map[string]any{"enabled": false}, m["metrics"])
+	assert.Equal(t, false, m["tracer"])
+	assert.Equal(t, false, m["logger"])
+	assert.Equal(t, map[string]any{"live": false, "ready": false, "startup": false}, m["custom_handlers"])
+	assert.Equal(t, []any{}, m["checks"])
+
+	tlsBlock, ok := m["tls"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, tlsBlock["enabled"])
+	assert.Equal(t, map[string]any{"loaded": false}, tlsBlock["certificate"])
+}
+
+func TestMCPConfig_ReflectsOptions(t *testing.T) {
+	h := New(
+		WithHTTPAddress(":9000"),
+		WithTimeOut(2*time.Second),
+		WithBackCheck(10*time.Second),
+		WithoutPProf(),
+		WithMetrics(false, false, false),
+		WithLogger(slog.New(slog.DiscardHandler)),
+		WithTracer(&fakeTracer{}),
+	)
+	h.SetHandlerReady(func(http.ResponseWriter, *http.Request) {})
+
+	m := decodeMCPConfig(t, h)
+
+	assert.Equal(t, ":9000", m["http_addr"])
+	assert.Equal(t, "2s", m["timeout"])
+	assert.Equal(t, map[string]any{"enabled": true, "interval": "10s"}, m["background_check"])
+	assert.Equal(t, false, m["pprof"])
+	assert.Equal(t, map[string]any{"enabled": true}, m["metrics"])
+	assert.Equal(t, true, m["logger"])
+	assert.Equal(t, true, m["tracer"])
+	assert.Equal(t, map[string]any{"live": false, "ready": true, "startup": false}, m["custom_handlers"])
+}
+
+func TestMCPConfig_RedactsSecrets(t *testing.T) {
+	h := New(WithBasicAuth("admin-user", "s3cret-pass"), WithTLS("/etc/tls/tls.crt", "/secret/tls-private.key"))
+
+	raw := string(h.mcpConfig())
+	assert.NotContains(t, raw, "admin-user")
+	assert.NotContains(t, raw, "s3cret-pass")
+	assert.NotContains(t, raw, "tls-private.key")
+
+	m := decodeMCPConfig(t, h)
+	assert.Equal(t, true, m["basic_auth"])
+
+	tlsBlock := m["tls"].(map[string]any)
+	assert.Equal(t, "/etc/tls/tls.crt", tlsBlock["cert_file"])
+	assert.Equal(t, true, tlsBlock["enabled"])
+	assert.Equal(t, false, tlsBlock["certificate"].(map[string]any)["loaded"])
+}
+
+func TestMCPConfig_ChecksSortedAndLive(t *testing.T) {
+	h := New()
+	require.NoError(t, h.Add("b", "notes-b", okCheck))
+	require.NoError(t, h.Add("a", "notes-a", okCheck))
+
+	m := decodeMCPConfig(t, h)
+	assert.Equal(t, []any{
+		map[string]any{"name": "a", "notes": "notes-a"},
+		map[string]any{"name": "b", "notes": "notes-b"},
+	}, m["checks"])
+
+	h.Start()
+	t.Cleanup(h.Shutdown)
+
+	require.NoError(t, h.Add("c", "", okCheck))
+
+	m = decodeMCPConfig(t, h)
+	assert.Equal(t, []any{
+		map[string]any{"name": "a", "notes": "notes-a"},
+		map[string]any{"name": "b", "notes": "notes-b"},
+		map[string]any{"name": "c", "notes": ""},
+	}, m["checks"])
+}
+
+func TestMCPConfig_CurrentCertificateAfterReload(t *testing.T) {
+	const addr = ":18200"
+
+	dir := t.TempDir()
+	notAfter1 := time.Now().Add(24 * time.Hour)
+	certPath, keyPath := newSelfSignedPair(t, dir, "first", notAfter1)
+
+	h := New(WithHTTPAddress(addr), WithTLS(certPath, keyPath))
+	startTLSServer(t, h, addr)
+
+	cert := func() map[string]any {
+		return decodeMCPConfig(t, h)["tls"].(map[string]any)["certificate"].(map[string]any)
+	}
+
+	c := cert()
+	assert.Equal(t, true, c["loaded"])
+	assert.Equal(t, "first", c["subject"])
+
+	got, err := time.Parse(time.RFC3339, c["not_after"].(string))
+	require.NoError(t, err)
+	assert.Equal(t, notAfter1.UTC().Truncate(time.Second), got.UTC())
+
+	writeSelfSigned(t, certPath, keyPath, "second", time.Now().Add(48*time.Hour))
+
+	require.Eventually(t, func() bool {
+		return cert()["subject"] == "second"
+	}, 5*time.Second, 50*time.Millisecond)
+}
