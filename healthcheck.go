@@ -22,6 +22,7 @@ const (
 	HandlerReady       = "/ready"
 	HandlerStartup     = "/startup"
 	HandlerDebug       = "/debug/"
+	HandlerMCP         = "/mcp"
 )
 
 type HealthCheck interface {
@@ -60,6 +61,8 @@ type healthCheck struct {
 	basicAuthPass string
 
 	customMiddleware func(http.Handler) http.Handler // optional user middleware applied to all registered endpoints
+
+	mcp MCPServer // optional MCP server; when set, StartHTTPServer registers /mcp
 
 	pprofEnabled bool // when true, StartHTTPServer registers the pprof (/debug/) endpoint
 
@@ -392,7 +395,7 @@ func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 
 // StartHTTPServer starts the HTTP server on the address set via WithHTTPAddress (default ":8080").
 // Registers /health, the k8s probes /live, /ready, /startup, /metrics (if metrics enabled),
-// and /debug/ (pprof, unless disabled via WithoutPProf). The probe endpoints use the custom
+// /debug/ (pprof, unless disabled via WithoutPProf), and /mcp (if WithMCP is set). The probe endpoints use the custom
 // handlers set via SetHandlerLive/SetHandlerReady/SetHandlerStartup, or default to running the
 // checks (like /health) when no custom handler is set.
 // When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
@@ -412,6 +415,9 @@ func (h *healthCheck) StartHTTPServer() error {
 	}
 	if h.pprofEnabled {
 		mux.Handle(HandlerDebug, h.wrapHandler(http.HandlerFunc(h.HandlerPProf)))
+	}
+	if hd := h.MCPHandler(); hd != nil {
+		mux.Handle(HandlerMCP, h.wrapHandler(hd))
 	}
 
 	srv := &http.Server{Addr: h.httpAddr, Handler: mux}

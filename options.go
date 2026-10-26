@@ -180,3 +180,15 @@ func WithTLSReloadInterval(d time.Duration) HCOption {
 		check.tlsReloadInterval = d
 	}
 }
+
+// WithMCP enables the MCP endpoint served at /mcp by StartHTTPServer, using s to build the handler.
+// Pass nil to disable MCP (the default).
+//
+// /mcp exposes the configuration and can run checks: protect it with WithBasicAuth or
+// WithMiddleware. With MCP enabled, check functions may be called concurrently with their
+// regular runs and must be ready for that. To mount the handler on your own mux, use MCPHandler.
+func WithMCP(s MCPServer) HCOption {
+	return func(check *healthCheck) {
+		check.mcp = s
+	}
+}
