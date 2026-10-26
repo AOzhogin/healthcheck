@@ -45,6 +45,11 @@ A generic MCP client config (Streamable HTTP transport plus a header):
 
 Use `https://` if the service is started with `WithTLS`.
 
+If requests fail with `403 Forbidden: invalid Host header`, this is the go-sdk DNS-rebinding protection: the
+Streamable HTTP handler rejects a request that arrives on a loopback address while its `Host` header is not
+loopback, e.g. behind a sidecar reverse proxy (kube-rbac-proxy style) that forwards to 127.0.0.1 and preserves the
+original Host. Escape hatch: set the env `MCPGODEBUG=disablelocalhostprotection=1` on the service.
+
 ## curl smoke test
 
 ```bash
@@ -64,7 +69,7 @@ mux.Handle(healthcheck.HandlerMCP, hc.MCPHandler())
 ```
 
 `MCPHandler()` is unwrapped: you add authentication and middleware yourself. In this mode
-`tls.certificate.loaded` in the config output is always `false`.
+`tls.certificate.loaded` in the config output is always `false` and `http_addr` only reflects the `WithHTTPAddress` option value, not your server's real address.
 
 ## Security
 

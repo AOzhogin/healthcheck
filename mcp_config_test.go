@@ -1,9 +1,16 @@
 package healthcheck
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"log/slog"
+	"math/big"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -135,4 +142,37 @@ func TestMCPConfig_CurrentCertificateAfterReload(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return cert()["subject"] == "second"
 	}, 5*time.Second, 50*time.Millisecond)
+}
+
+func TestMCPConfig_CertificateWithoutSANsHasEmptyDNSNamesArray(t *testing.T) {
+	const addr = ":18299"
+
+	dir := t.TempDir()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "no-sans"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+
+	certPath, keyPath := filepath.Join(dir, "tls.crt"), filepath.Join(dir, "tls.key")
+	writePEM(t, certPath, "CERTIFICATE", der)
+	writePEM(t, keyPath, "EC PRIVATE KEY", keyDER)
+
+	h := New(WithHTTPAddress(addr), WithTLS(certPath, keyPath))
+	startTLSServer(t, h, addr)
+
+	c := decodeMCPConfig(t, h)["tls"].(map[string]any)["certificate"].(map[string]any)
+	assert.Equal(t, true, c["loaded"])
+	assert.Equal(t, []any{}, c["dns_names"])
+	assert.Contains(t, string(h.mcpConfig()), `"dns_names":[]`)
 }

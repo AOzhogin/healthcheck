@@ -233,7 +233,7 @@ hc := healthcheck.New(
 
 - Resources: `healthcheck://config`, `healthcheck://checks`.
 - Tools: `get_config`, `get_status`, `list_checks`, `run_check` (argument `name`).
-- With your own mux use `mux.Handle(healthcheck.HandlerMCP, hc.MCPHandler())` and add auth yourself.
+- With your own mux use `mux.Handle(healthcheck.HandlerMCP, hc.MCPHandler())` and add auth yourself. In this mode `tls.certificate.loaded` is always `false` and `http_addr` only reflects the `WithHTTPAddress` value, not your server's real address.
 - Security: `/mcp` goes through Basic Auth/middleware when configured; do not expose it unprotected
   outside localhost. `mcphc.WithoutRunCheck()` removes `run_check` for heavy checks.
 - With MCP enabled, check functions may run concurrently.

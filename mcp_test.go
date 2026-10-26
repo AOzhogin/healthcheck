@@ -3,12 +3,13 @@ package healthcheck
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // fakeMCP is a test MCPServer that records the source it is given.
@@ -33,7 +34,7 @@ func TestMCPHandler_NilWithoutOption(t *testing.T) {
 func TestMCPHandler_SourceIsWired(t *testing.T) {
 	f := &fakeMCP{}
 	h := New(WithMCP(f))
-	h.Add("db", "n", func(context.Context) error { return nil })
+	require.NoError(t, h.Add("db", "n", func(context.Context) error { return nil }))
 	if h.MCPHandler() == nil {
 		t.Fatal("expected handler")
 	}
@@ -51,7 +52,6 @@ func TestMCPHandler_SourceIsWired(t *testing.T) {
 	if _, err := f.src.RunCheck(ctx, "x"); err == nil || err.Error() != `healthcheck: mcp: unknown check "x"` {
 		t.Errorf("unknown: %v", err)
 	}
-	var _ json.RawMessage = f.src.Config()
 }
 
 func TestMCPHandler_OwnMux(t *testing.T) {
@@ -75,7 +75,7 @@ func TestStartHTTPServer_NoMCPRouteByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status %d, want 404", resp.StatusCode)
 	}
@@ -97,7 +97,7 @@ func TestStartHTTPServer_MCPRouteWithAuthAndMiddleware(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("no auth: %d", resp.StatusCode)
 	}
@@ -107,7 +107,7 @@ func TestStartHTTPServer_MCPRouteWithAuthAndMiddleware(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != 200 || resp.Header.Get("X-Custom-Middleware") != "true" {
 		t.Errorf("auth: %d hdr=%q", resp.StatusCode, resp.Header.Get("X-Custom-Middleware"))
 	}

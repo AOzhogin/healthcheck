@@ -66,13 +66,25 @@ type (
 	mcpCertificate struct {
 		Loaded    bool       `json:"loaded"`
 		Subject   string     `json:"subject,omitempty"`
-		DNSNames  []string   `json:"dns_names,omitempty"`
+		DNSNames  []string   `json:"dns_names"`
 		Issuer    string     `json:"issuer,omitempty"`
 		Serial    string     `json:"serial,omitempty"`
 		NotBefore *time.Time `json:"not_before,omitempty"`
 		NotAfter  *time.Time `json:"not_after,omitempty"`
 	}
 )
+
+// MarshalJSON emits exactly {"loaded":false} when no certificate is served; for a loaded one every
+// field is present and dns_names is always an array.
+func (c mcpCertificate) MarshalJSON() ([]byte, error) {
+	if !c.Loaded {
+		return []byte(`{"loaded":false}`), nil
+	}
+
+	type plain mcpCertificate
+
+	return json.Marshal(plain(c))
+}
 
 // mcpConfig serializes the effective configuration for the MCP endpoint. Secrets (Basic Auth
 // credentials, the TLS key path) are never included.
@@ -145,7 +157,7 @@ func (h *healthCheck) mcpCertificate() mcpCertificate {
 	return mcpCertificate{
 		Loaded:    true,
 		Subject:   leaf.Subject.CommonName,
-		DNSNames:  leaf.DNSNames,
+		DNSNames:  append([]string{}, leaf.DNSNames...),
 		Issuer:    leaf.Issuer.CommonName,
 		Serial:    leaf.SerialNumber.Text(16),
 		NotBefore: &nb,
