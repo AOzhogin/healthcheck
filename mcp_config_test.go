@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"math/big"
+	"net"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -175,4 +176,20 @@ func TestMCPConfig_CertificateWithoutSANsHasEmptyDNSNamesArray(t *testing.T) {
 	assert.Equal(t, true, c["loaded"])
 	assert.Equal(t, []any{}, c["dns_names"])
 	assert.Contains(t, string(h.mcpConfig()), `"dns_names":[]`)
+}
+
+func TestMCPConfig_CertificateNotLoadedAfterServerReturns(t *testing.T) {
+	const addr = "127.0.0.1:18203"
+
+	// Occupy the port so StartHTTPServer loads the keypair and then fails to listen.
+	ln, err := net.Listen("tcp", addr)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	certPath, keyPath := newSelfSignedPair(t, t.TempDir(), "gone", time.Now().Add(time.Hour))
+
+	h := New(WithHTTPAddress(addr), WithTLS(certPath, keyPath))
+	require.Error(t, h.StartHTTPServer())
+
+	assert.Equal(t, map[string]any{"loaded": false}, decodeMCPConfig(t, h)["tls"].(map[string]any)["certificate"])
 }

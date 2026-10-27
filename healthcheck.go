@@ -443,7 +443,10 @@ func (h *healthCheck) StartHTTPServer() error {
 		return fmt.Errorf("healthcheck: tls: load keypair: %w", err)
 	}
 	h.tlsReloader.Store(reloader)
-	defer func() { _ = reloader.close() }()
+	defer func() {
+		h.tlsReloader.Store(nil) // the certificate is no longer served once the server returns
+		_ = reloader.close()
+	}()
 
 	if err := reloader.start(h.ctx); err != nil {
 		return fmt.Errorf("healthcheck: tls: watch certificate: %w", err)
