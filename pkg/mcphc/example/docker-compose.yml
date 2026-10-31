@@ -1,0 +1,10 @@
+services:
+  healthcheck-mcp:
+    build:
+      context: ../../..
+      dockerfile: pkg/mcphc/example/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      HC_USER: admin # demo credentials only
+      HC_PASS: admin

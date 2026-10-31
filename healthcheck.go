@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +22,7 @@ const (
 	HandlerReady       = "/ready"
 	HandlerStartup     = "/startup"
 	HandlerDebug       = "/debug/"
+	HandlerMCP         = "/mcp"
 )
 
 type HealthCheck interface {
@@ -60,14 +62,17 @@ type healthCheck struct {
 
 	customMiddleware func(http.Handler) http.Handler // optional user middleware applied to all registered endpoints
 
+	mcp MCPServer // optional MCP server; when set, StartHTTPServer registers /mcp
+
 	pprofEnabled bool // when true, StartHTTPServer registers the pprof (/debug/) endpoint
 
 	// TLS: when both files are set, StartHTTPServer serves HTTPS and reloads the keypair whenever the
 	// files change on disk, so a rotation needs no restart.
 	tlsCertFile       string
 	tlsKeyFile        string
-	tlsConfig         *tls.Config   // optional base config; the certificate source is always overridden
-	tlsReloadInterval time.Duration // safety-net rescan interval; 0 relies on filesystem events only
+	tlsConfig         *tls.Config                  // optional base config; the certificate source is always overridden
+	tlsReloadInterval time.Duration                // safety-net rescan interval; 0 relies on filesystem events only
+	tlsReloader       atomic.Pointer[certReloader] // reloader of the running TLS server; nil before it starts
 
 	// custom handlers for the k8s probe endpoints; nil means use the default (HandlerHealth).
 	// Read once at route registration in StartHTTPServer; set them before calling it.
@@ -390,7 +395,7 @@ func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 
 // StartHTTPServer starts the HTTP server on the address set via WithHTTPAddress (default ":8080").
 // Registers /health, the k8s probes /live, /ready, /startup, /metrics (if metrics enabled),
-// and /debug/ (pprof, unless disabled via WithoutPProf). The probe endpoints use the custom
+// /debug/ (pprof, unless disabled via WithoutPProf), and /mcp (if WithMCP is set). The probe endpoints use the custom
 // handlers set via SetHandlerLive/SetHandlerReady/SetHandlerStartup, or default to running the
 // checks (like /health) when no custom handler is set.
 // When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
@@ -410,6 +415,9 @@ func (h *healthCheck) StartHTTPServer() error {
 	}
 	if h.pprofEnabled {
 		mux.Handle(HandlerDebug, h.wrapHandler(http.HandlerFunc(h.HandlerPProf)))
+	}
+	if hd := h.MCPHandler(); hd != nil {
+		mux.Handle(HandlerMCP, h.wrapHandler(hd))
 	}
 
 	srv := &http.Server{Addr: h.httpAddr, Handler: mux}
@@ -434,7 +442,11 @@ func (h *healthCheck) StartHTTPServer() error {
 	if err != nil {
 		return fmt.Errorf("healthcheck: tls: load keypair: %w", err)
 	}
-	defer func() { _ = reloader.close() }()
+	h.tlsReloader.Store(reloader)
+	defer func() {
+		h.tlsReloader.Store(nil) // the certificate is no longer served once the server returns
+		_ = reloader.close()
+	}()
 
 	if err := reloader.start(h.ctx); err != nil {
 		return fmt.Errorf("healthcheck: tls: watch certificate: %w", err)

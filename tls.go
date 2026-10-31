@@ -314,3 +314,15 @@ func (c *certReloader) close() error {
 
 	return err
 }
+
+// leaf returns the leaf certificate currently served, or nil when no keypair is loaded.
+func (c *certReloader) leaf() *x509.Certificate {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.cert == nil {
+		return nil
+	}
+
+	return c.cert.Leaf
+}
