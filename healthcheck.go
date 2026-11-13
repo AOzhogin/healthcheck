@@ -338,12 +338,18 @@ func (h *healthCheck) SetHandlerStartup(handler http.HandlerFunc) {
 	h.startupHandler = handler
 }
 
-// resolveHandler returns custom if non-nil, otherwise the default probe handler (HandlerHealth).
+// resolveHandler returns custom if non-nil, otherwise the default probe handler (probeHandler).
 func (h *healthCheck) resolveHandler(custom http.HandlerFunc) http.Handler {
 	if custom != nil {
 		return custom
 	}
-	return http.HandlerFunc(h.HandlerHealth)
+	return http.HandlerFunc(h.probeHandler)
+}
+
+// probeHandler is the default for /live, /ready, /startup: it answers statusCodeSuccess with no body
+// and touches no dependency. Gate a probe on the checks with e.g. SetHandlerReady(hc.HandlerHealth).
+func (h *healthCheck) probeHandler(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(h.statusCodeSuccess)
 }
 
 // withTLS reports whether StartHTTPServer should serve HTTPS.

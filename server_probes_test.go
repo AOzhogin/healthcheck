@@ -45,7 +45,7 @@ func TestHTTPServer_K8sProbes_Default(t *testing.T) {
 	}
 }
 
-func TestHTTPServer_K8sProbes_DefaultReflectsFailure(t *testing.T) {
+func TestHTTPServer_K8sProbes_DefaultIgnoresChecks(t *testing.T) {
 	const addr = ":18091"
 	h := New(WithHTTPAddress(addr))
 	if err := h.Add("dep", "down", func(context.Context) error { return errors.New("dependency down") }); err != nil {
@@ -54,10 +54,19 @@ func TestHTTPServer_K8sProbes_DefaultReflectsFailure(t *testing.T) {
 	startServer(t, h)
 	base := "http://localhost" + addr
 
-	// All probes default to running the checks, so a failing check yields 503.
+	// Default probes answer statusCodeSuccess without running the checks.
 	for _, ep := range []string{HandlerLive, HandlerReady, HandlerStartup} {
-		if code := getStatus(t, base+ep); code != http.StatusServiceUnavailable {
-			t.Errorf("default %s with failing check: got %d, want 503", ep, code)
+		if code := getStatus(t, base+ep); code != http.StatusOK {
+			t.Errorf("default %s with failing check: got %d, want 200", ep, code)
+		}
+	}
+
+	const addrCustom = ":18300"
+	hc := New(WithHTTPAddress(addrCustom), WithSuccessStatus(http.StatusNoContent))
+	startServer(t, hc)
+	for _, ep := range []string{HandlerLive, HandlerReady, HandlerStartup} {
+		if code := getStatus(t, "http://localhost"+addrCustom+ep); code != http.StatusNoContent {
+			t.Errorf("default %s with WithSuccessStatus(204): got %d, want 204", ep, code)
 		}
 	}
 }
@@ -65,11 +74,10 @@ func TestHTTPServer_K8sProbes_DefaultReflectsFailure(t *testing.T) {
 func TestHTTPServer_K8sProbes_CustomOverride(t *testing.T) {
 	const addr = ":18092"
 	h := New(WithHTTPAddress(addr))
-	// Add a failing check to prove liveness is decoupled from it via a custom handler.
+	// A failing check: default probes must not depend on it.
 	if err := h.Add("dep", "down", func(context.Context) error { return errors.New("down") }); err != nil {
 		t.Fatal(err)
 	}
-	// Liveness: cheap, always alive regardless of dependencies.
 	h.SetHandlerLive(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	// Readiness: custom failure code to prove the override is wired.
 	h.SetHandlerReady(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) })
@@ -82,9 +90,9 @@ func TestHTTPServer_K8sProbes_CustomOverride(t *testing.T) {
 	if code := getStatus(t, base+HandlerReady); code != http.StatusServiceUnavailable {
 		t.Errorf("custom ready: got %d, want 503", code)
 	}
-	// Startup left default -> runs checks -> 503 because of the failing dependency.
-	if code := getStatus(t, base+HandlerStartup); code != http.StatusServiceUnavailable {
-		t.Errorf("default startup with failing check: got %d, want 503", code)
+	// Startup left default -> answers success regardless of the failing dependency.
+	if code := getStatus(t, base+HandlerStartup); code != http.StatusOK {
+		t.Errorf("default startup with failing check: got %d, want 200", code)
 	}
 }
 

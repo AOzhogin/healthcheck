@@ -50,13 +50,13 @@ func TestSetHandlerProbes(t *testing.T) {
 func TestResolveHandler(t *testing.T) {
 	h := New()
 
-	t.Run("nil falls back to default health handler", func(t *testing.T) {
+	t.Run("nil falls back to default probe handler", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, HandlerLive, nil)
 		h.resolveHandler(nil).ServeHTTP(rec, req)
-		// default (HandlerHealth) with no checks returns success.
+		// default (probeHandler) answers success with no body.
 		assertResponseCode(t, rec.Code, http.StatusOK)
-		assertResponseContentType(t, rec.Header().Get("Content-Type"), "application/json")
+		assertResponseContentType(t, rec.Header().Get("Content-Type"), "")
 	})
 
 	t.Run("custom handler is used", func(t *testing.T) {
