@@ -91,3 +91,31 @@ func TestMiddlewareProbe_HealthHandlerAsCustom(t *testing.T) {
 	assert.Empty(t, rec.Body.String())
 	assert.Empty(t, rec.Header().Get("Content-Type"))
 }
+
+func TestServeProbes_OwnMux(t *testing.T) {
+	h := New()
+	if err := h.Add("dep", "down", func(context.Context) error { return errors.New("down") }); err != nil {
+		t.Fatal(err)
+	}
+	h.SetHandlerReady(h.HandlerHealth)
+
+	mux := http.NewServeMux()
+	mux.Handle(HandlerLive, h.ServeLive())
+	mux.Handle(HandlerReady, h.ServeReady())
+	mux.Handle(HandlerStartup, h.ServeStartup())
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	for _, ep := range []string{HandlerLive, HandlerStartup} {
+		code, body := doRequest(t, http.MethodGet, srv.URL+ep, nil)
+		assert.Equal(t, http.StatusOK, code, ep)
+		assert.Empty(t, body, ep)
+	}
+
+	code, body := doRequest(t, http.MethodGet, srv.URL+HandlerReady+"?body=true", nil)
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+	assert.Empty(t, body)
+
+	code, _ = doRequest(t, http.MethodPost, srv.URL+HandlerLive, nil)
+	assert.Equal(t, http.StatusMethodNotAllowed, code)
+}

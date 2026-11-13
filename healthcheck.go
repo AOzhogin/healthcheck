@@ -37,8 +37,14 @@ type HealthCheck interface {
 	SetHandlerReady(handler http.HandlerFunc)
 	SetHandlerStartup(handler http.HandlerFunc)
 
+	ServeLive() http.Handler
+	ServeReady() http.Handler
+	ServeStartup() http.Handler
+
 	Add(name string, notes string, e HCFunc) error
 }
+
+var _ HealthCheck = (*healthCheck)(nil)
 
 type healthCheck struct {
 	cache              checkResults
@@ -338,6 +344,24 @@ func (h *healthCheck) SetHandlerReady(handler http.HandlerFunc) {
 // Read once at route registration; call before StartHTTPServer.
 func (h *healthCheck) SetHandlerStartup(handler http.HandlerFunc) {
 	h.startupHandler = handler
+}
+
+// ServeLive returns the /live probe handler for mounting on your own mux: the SetHandlerLive handler
+// (or the default answering statusCodeSuccess), status-only via MiddlewareProbe. Custom middleware
+// and Basic Auth are not applied — the mux is yours. Call SetHandlerLive before ServeLive.
+func (h *healthCheck) ServeLive() http.Handler {
+	return h.MiddlewareProbe(h.resolveHandler(h.liveHandler))
+}
+
+// ServeReady is ServeLive for /ready (SetHandlerReady). To gate readiness on the checks, call
+// SetHandlerReady(hc.HandlerHealth) first.
+func (h *healthCheck) ServeReady() http.Handler {
+	return h.MiddlewareProbe(h.resolveHandler(h.readyHandler))
+}
+
+// ServeStartup is ServeLive for /startup (SetHandlerStartup).
+func (h *healthCheck) ServeStartup() http.Handler {
+	return h.MiddlewareProbe(h.resolveHandler(h.startupHandler))
 }
 
 // resolveHandler returns custom if non-nil, otherwise the default probe handler (probeHandler).
