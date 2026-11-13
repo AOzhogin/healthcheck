@@ -240,6 +240,144 @@ func (_c *MockHealthCheck_HandlerPProf_Call) RunAndReturn(run func(w http.Respon
 	return _c
 }
 
+// ServeLive provides a mock function for the type MockHealthCheck
+func (_mock *MockHealthCheck) ServeLive() http.Handler {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for ServeLive")
+	}
+
+	var r0 http.Handler
+	if returnFunc, ok := ret.Get(0).(func() http.Handler); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(http.Handler)
+		}
+	}
+	return r0
+}
+
+// MockHealthCheck_ServeLive_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ServeLive'
+type MockHealthCheck_ServeLive_Call struct {
+	*mock.Call
+}
+
+// ServeLive is a helper method to define mock.On call
+func (_e *MockHealthCheck_Expecter) ServeLive() *MockHealthCheck_ServeLive_Call {
+	return &MockHealthCheck_ServeLive_Call{Call: _e.mock.On("ServeLive")}
+}
+
+func (_c *MockHealthCheck_ServeLive_Call) Run(run func()) *MockHealthCheck_ServeLive_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockHealthCheck_ServeLive_Call) Return(handler http.Handler) *MockHealthCheck_ServeLive_Call {
+	_c.Call.Return(handler)
+	return _c
+}
+
+func (_c *MockHealthCheck_ServeLive_Call) RunAndReturn(run func() http.Handler) *MockHealthCheck_ServeLive_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ServeReady provides a mock function for the type MockHealthCheck
+func (_mock *MockHealthCheck) ServeReady() http.Handler {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for ServeReady")
+	}
+
+	var r0 http.Handler
+	if returnFunc, ok := ret.Get(0).(func() http.Handler); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(http.Handler)
+		}
+	}
+	return r0
+}
+
+// MockHealthCheck_ServeReady_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ServeReady'
+type MockHealthCheck_ServeReady_Call struct {
+	*mock.Call
+}
+
+// ServeReady is a helper method to define mock.On call
+func (_e *MockHealthCheck_Expecter) ServeReady() *MockHealthCheck_ServeReady_Call {
+	return &MockHealthCheck_ServeReady_Call{Call: _e.mock.On("ServeReady")}
+}
+
+func (_c *MockHealthCheck_ServeReady_Call) Run(run func()) *MockHealthCheck_ServeReady_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockHealthCheck_ServeReady_Call) Return(handler http.Handler) *MockHealthCheck_ServeReady_Call {
+	_c.Call.Return(handler)
+	return _c
+}
+
+func (_c *MockHealthCheck_ServeReady_Call) RunAndReturn(run func() http.Handler) *MockHealthCheck_ServeReady_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ServeStartup provides a mock function for the type MockHealthCheck
+func (_mock *MockHealthCheck) ServeStartup() http.Handler {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for ServeStartup")
+	}
+
+	var r0 http.Handler
+	if returnFunc, ok := ret.Get(0).(func() http.Handler); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(http.Handler)
+		}
+	}
+	return r0
+}
+
+// MockHealthCheck_ServeStartup_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ServeStartup'
+type MockHealthCheck_ServeStartup_Call struct {
+	*mock.Call
+}
+
+// ServeStartup is a helper method to define mock.On call
+func (_e *MockHealthCheck_Expecter) ServeStartup() *MockHealthCheck_ServeStartup_Call {
+	return &MockHealthCheck_ServeStartup_Call{Call: _e.mock.On("ServeStartup")}
+}
+
+func (_c *MockHealthCheck_ServeStartup_Call) Run(run func()) *MockHealthCheck_ServeStartup_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockHealthCheck_ServeStartup_Call) Return(handler http.Handler) *MockHealthCheck_ServeStartup_Call {
+	_c.Call.Return(handler)
+	return _c
+}
+
+func (_c *MockHealthCheck_ServeStartup_Call) RunAndReturn(run func() http.Handler) *MockHealthCheck_ServeStartup_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetHandlerLive provides a mock function for the type MockHealthCheck
 func (_mock *MockHealthCheck) SetHandlerLive(handler http.HandlerFunc) {
 	_mock.Called(handler)

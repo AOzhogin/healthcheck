@@ -53,6 +53,8 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
+            # Fails on CertExpiryCheck only when the app gates readiness on the checks
+            # (hc.SetHandlerReady(hc.HandlerHealth)).
             httpGet: { path: /ready, port: https, scheme: HTTPS }
             periodSeconds: 10
             failureThreshold: 3

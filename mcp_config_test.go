@@ -37,6 +37,7 @@ func TestMCPConfig_Defaults(t *testing.T) {
 	assert.Equal(t, map[string]any{"success": float64(200), "error": float64(503)}, m["status_codes"])
 	assert.Equal(t, map[string]any{"success": "ok", "error": "error"}, m["check_status"])
 	assert.Equal(t, false, m["basic_auth"])
+	assert.Equal(t, false, m["probe_auth"])
 	assert.Equal(t, false, m["custom_middleware"])
 	assert.Equal(t, true, m["pprof"])
 	assert.Equal(t, map[string]any{"enabled": false}, m["metrics"])
@@ -76,7 +77,7 @@ func TestMCPConfig_ReflectsOptions(t *testing.T) {
 }
 
 func TestMCPConfig_RedactsSecrets(t *testing.T) {
-	h := New(WithBasicAuth("admin-user", "s3cret-pass"), WithTLS("/etc/tls/tls.crt", "/secret/tls-private.key"))
+	h := New(WithBasicAuth("admin-user", "s3cret-pass"), WithProbeAuth(), WithTLS("/etc/tls/tls.crt", "/secret/tls-private.key"))
 
 	raw := string(h.mcpConfig())
 	assert.NotContains(t, raw, "admin-user")
@@ -85,6 +86,7 @@ func TestMCPConfig_RedactsSecrets(t *testing.T) {
 
 	m := decodeMCPConfig(t, h)
 	assert.Equal(t, true, m["basic_auth"])
+	assert.Equal(t, true, m["probe_auth"])
 
 	tlsBlock := m["tls"].(map[string]any)
 	assert.Equal(t, "/etc/tls/tls.crt", tlsBlock["cert_file"])

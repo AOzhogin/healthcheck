@@ -134,8 +134,8 @@ func WithoutPProf() HCOption {
 	}
 }
 
-// WithBasicAuth enables HTTP Basic Auth for /health, /metrics, and /debug endpoints.
-// If username is empty, Basic Auth is disabled.
+// WithBasicAuth enables HTTP Basic Auth for /health, /metrics, /debug and /mcp. The k8s probes stay
+// open unless WithProbeAuth is set. If username is empty, Basic Auth is disabled.
 func WithBasicAuth(username, password string) HCOption {
 	return func(check *healthCheck) {
 		check.basicAuthUser = username
@@ -143,7 +143,15 @@ func WithBasicAuth(username, password string) HCOption {
 	}
 }
 
-// WithMiddleware sets a custom middleware applied to /health, /metrics, and /debug in StartHTTPServer.
+// WithProbeAuth puts the k8s probes (/live, /ready, /startup) behind Basic Auth as well, for setups
+// where kubelet sends credentials via httpHeaders. It has no effect without WithBasicAuth.
+func WithProbeAuth() HCOption {
+	return func(check *healthCheck) {
+		check.probeAuth = true
+	}
+}
+
+// WithMiddleware sets a custom middleware applied to every endpoint StartHTTPServer serves, the probes included.
 // The middleware runs before Basic Auth (if enabled). Pass nil to disable.
 func WithMiddleware(mw func(http.Handler) http.Handler) HCOption {
 	return func(check *healthCheck) {

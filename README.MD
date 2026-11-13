@@ -96,27 +96,45 @@ HandlerStartup     = "/startup"
 
 #### Custom k8s probe handlers
 
-`StartHTTPServer` serves `/live`, `/ready`, and `/startup`. By default each runs the
-registered checks (like `/health`). Assign your own handler per probe with the setters
-(pass `nil` to fall back to the default). Call them **before** `StartHTTPServer` — handlers
-are read once at route registration.
+`StartHTTPServer` serves `/live`, `/ready`, and `/startup`. By default each answers the success
+status code (`WithSuccessStatus`, 200 by default) without running the checks. Assign your own
+handler per probe with the setters (pass `nil` to fall back to the default). Call them **before**
+`StartHTTPServer` — handlers are read once at route registration.
 
 ```go
 hc := healthcheck.New(healthcheck.WithHTTPAddress(":8080"))
 
-// Liveness should be cheap and dependency-free (a DB blip must not restart the pod).
-hc.SetHandlerLive(func(w http.ResponseWriter, _ *http.Request) {
-    w.WriteHeader(http.StatusOK)
-})
+// Readiness gated on the registered checks: a failing check answers the error status code.
+hc.SetHandlerReady(hc.HandlerHealth)
 
-// Readiness / startup can gate on dependencies or warmup state.
-hc.SetHandlerReady(myReadinessHandler)
+// Startup gated on warmup state.
 hc.SetHandlerStartup(myStartupHandler)
 
 if err := hc.StartHTTPServer(); err != nil {
     panic(err)
 }
 ```
+
+The probes are made for kubelet:
+
+- They are **not behind Basic Auth**, even with `WithBasicAuth` (kubelet sends no credentials).
+  `WithProbeAuth()` puts them behind it again, if your probes send `httpHeaders: Authorization`.
+- They are **status-only**: GET/HEAD only (anything else gets 405), the query string is ignored, and
+  the body, `Content-Type` and `Content-Length` are dropped — custom handlers included (other headers
+  they set pass through). `/ready?body=true` returns no
+  details; those are only on `/health?body=true`.
+- `WithMiddleware` still applies to them.
+
+With your own mux, mount the same handlers (status-only, `SetHandler*` respected; middleware and auth
+are yours):
+
+```go
+mux.Handle(healthcheck.HandlerLive, hc.ServeLive())
+mux.Handle(healthcheck.HandlerReady, hc.ServeReady())
+mux.Handle(healthcheck.HandlerStartup, hc.ServeStartup())
+```
+
+`hc.MiddlewareProbe(h)` makes any handler status-only the same way.
 
 #### TLS / HTTPS
 
@@ -153,8 +171,8 @@ certificate source is always taken from `WithTLS`:
 healthcheck.WithTLSConfig(&tls.Config{MinVersion: tls.VersionTLS13})
 ```
 
-Pair it with `CertExpiryCheck` so a certificate that silently stopped rotating fails `/ready` before
-clients start seeing handshake errors:
+Pair it with `CertExpiryCheck` and gate readiness on the checks (`hc.SetHandlerReady(hc.HandlerHealth)`)
+so a certificate that silently stopped rotating fails `/ready` before clients start seeing handshake errors:
 
 ```go
 hc.Add("tls-cert", "serving certificate", healthcheck.CertExpiryCheck("/etc/tls/tls.crt", 14*24*time.Hour))
@@ -177,7 +195,8 @@ WithBackCheck(interval time.Duration)   // run checks in background with specifi
 WithCheckStatusSuccess(status string)   // set string status for successful check (default: "ok")
 WithCheckStatusError(status string)     // set string status for failed check (default: "error")
 WithHTTPAddress(addr string)            // set HTTP listen address for StartHTTPServer (default: ":8080")
-WithBasicAuth(user, pass string)        // enable HTTP Basic Auth on the served endpoints
+WithBasicAuth(user, pass string)        // enable HTTP Basic Auth on the served endpoints (except the probes)
+WithProbeAuth()                         // put /live, /ready, /startup behind Basic Auth too
 WithMiddleware(mw func(http.Handler) http.Handler) // apply custom middleware to served endpoints
 WithoutPProf()                          // disable the pprof (/debug/) endpoint (enabled by default)
 WithLogger(logger *slog.Logger)         // log check state transitions (ok<->error); off when nil
