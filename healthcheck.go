@@ -57,10 +57,12 @@ type healthCheck struct {
 	Metrics
 	httpAddr string // HTTP listen address for StartHTTPServer, e.g. ":8080"
 
-	basicAuthUser string // non-empty enables HTTP Basic Auth for /health, /metrics, /debug
+	basicAuthUser string // non-empty enables HTTP Basic Auth for /health, /metrics, /debug, /mcp
 	basicAuthPass string
 
 	customMiddleware func(http.Handler) http.Handler // optional user middleware applied to all registered endpoints
+
+	probeAuth bool // when true, the k8s probes are behind Basic Auth too (WithProbeAuth)
 
 	mcp MCPServer // optional MCP server; when set, StartHTTPServer registers /mcp
 
@@ -399,12 +401,26 @@ func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 	return next
 }
 
+// wrapProbe makes next status-only (MiddlewareProbe), then applies custom middleware (if set).
+// Basic Auth is applied only with WithProbeAuth: kubelet sends no credentials by default.
+func (h *healthCheck) wrapProbe(next http.Handler) http.Handler {
+	next = h.MiddlewareProbe(next)
+	if h.customMiddleware != nil {
+		next = h.customMiddleware(next)
+	}
+	if h.probeAuth {
+		next = h.MiddlewareAuth(next)
+	}
+	return next
+}
+
 // StartHTTPServer starts the HTTP server on the address set via WithHTTPAddress (default ":8080").
 // Registers /health, the k8s probes /live, /ready, /startup, /metrics (if metrics enabled),
 // /debug/ (pprof, unless disabled via WithoutPProf), and /mcp (if WithMCP is set). The probe endpoints use the custom
-// handlers set via SetHandlerLive/SetHandlerReady/SetHandlerStartup, or default to running the
-// checks (like /health) when no custom handler is set.
-// When WithBasicAuth is set, these endpoints require HTTP Basic Auth.
+// handlers set via SetHandlerLive/SetHandlerReady/SetHandlerStartup, or default to answering
+// statusCodeSuccess without running the checks. Probes are status-only (see MiddlewareProbe).
+// When WithBasicAuth is set, every endpoint except the probes requires HTTP Basic Auth; WithProbeAuth
+// puts the probes behind it too.
 // When WithMiddleware is set, the custom middleware is applied first, then Basic Auth (if enabled).
 // When WithTLS is set, the server serves HTTPS and keeps the keypair in sync with the files on disk:
 // a rotation is picked up for new handshakes without restarting the process. An unusable keypair at
@@ -413,9 +429,9 @@ func (h *healthCheck) wrapHandler(next http.Handler) http.Handler {
 func (h *healthCheck) StartHTTPServer() error {
 	mux := http.NewServeMux()
 	mux.Handle(HandlerHealthCheck, h.wrapHandler(http.HandlerFunc(h.HandlerHealth)))
-	mux.Handle(HandlerLive, h.wrapHandler(h.resolveHandler(h.liveHandler)))
-	mux.Handle(HandlerReady, h.wrapHandler(h.resolveHandler(h.readyHandler)))
-	mux.Handle(HandlerStartup, h.wrapHandler(h.resolveHandler(h.startupHandler)))
+	mux.Handle(HandlerLive, h.wrapProbe(h.resolveHandler(h.liveHandler)))
+	mux.Handle(HandlerReady, h.wrapProbe(h.resolveHandler(h.readyHandler)))
+	mux.Handle(HandlerStartup, h.wrapProbe(h.resolveHandler(h.startupHandler)))
 	if h.Metrics != nil {
 		mux.Handle(HandlerMetrics, h.wrapHandler(h.Metrics.HandlerMetrics()))
 	}
