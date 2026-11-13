@@ -35,6 +35,7 @@ func main() {
 	if err := hc.Add("tls-cert", "serving certificate", healthcheck.CertExpiryCheck(certFile, 14*24*time.Hour)); err != nil {
 		log.Fatalf("add check: %v", err)
 	}
+	hc.SetHandlerReady(hc.HandlerHealth)
 
 	hc.Start()
 	defer hc.Shutdown()

@@ -151,7 +151,7 @@ func WithProbeAuth() HCOption {
 	}
 }
 
-// WithMiddleware sets a custom middleware applied to /health, /metrics, and /debug in StartHTTPServer.
+// WithMiddleware sets a custom middleware applied to every endpoint StartHTTPServer serves, the probes included.
 // The middleware runs before Basic Auth (if enabled). Pass nil to disable.
 func WithMiddleware(mw func(http.Handler) http.Handler) HCOption {
 	return func(check *healthCheck) {

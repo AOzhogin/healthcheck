@@ -4,9 +4,11 @@
 #
 # Semantics (k8s):
 #   startupProbe   gates liveness/readiness until the app has finished booting (slow starts).
-#   livenessProbe  -> /live    : keep it cheap; failing restarts the pod. Override with a custom
-#                                 SetHandlerLive so a dependency blip does NOT restart all pods.
+#   livenessProbe  -> /live    : keep it cheap; failing restarts the pod. The default answers 200
+#                                 without touching dependencies, so a DB blip does NOT restart pods.
 #   readinessProbe -> /ready   : failing removes the pod from Service endpoints (no restart).
+#                                 Reflects the checks only when gated: hc.SetHandlerReady(hc.HandlerHealth).
+# The probes are open (no Basic Auth unless WithProbeAuth) and status-only, so no httpHeaders needed.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

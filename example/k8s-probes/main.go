@@ -27,7 +27,7 @@ func main() {
 		healthcheck.WithContext(ctx),
 	)
 
-	// A dependency check that the readiness/startup defaults would run.
+	// A dependency check that gates readiness (see SetHandlerReady below).
 	if err := hc.Add("db", "db.company:5432", func(ctx context.Context) error {
 		return nil // replace with a real dependency ping
 	}); err != nil {
@@ -42,11 +42,8 @@ func main() {
 		log.Println("warmup complete")
 	}()
 
-	// Liveness: deliberately cheap and dependency-free. A DB blip must NOT restart the pod,
-	// so we only report that the process itself is alive.
-	hc.SetHandlerLive(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
+	// Liveness: left unset on purpose — the default answers 200 without touching dependencies,
+	// so a DB blip does NOT restart the pod.
 
 	// Startup: gate on warmup. While starting, return 503 so the kubelet keeps waiting
 	// (and holds off liveness/readiness) instead of restarting a slow-booting pod.
@@ -58,14 +55,14 @@ func main() {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	})
 
-	// Readiness: left unset on purpose — it falls back to the default handler, which runs
-	// the registered checks (like /health). Set it via hc.SetHandlerReady(...) to customize.
+	// Readiness: gated on the registered checks; a failing check takes the pod out of the Service.
+	hc.SetHandlerReady(hc.HandlerHealth)
 
 	hc.Start()
 	defer hc.Shutdown()
 
 	go func() {
-		log.Printf("server started on %s (/live cheap, /startup gated, /ready = checks)", listenPort)
+		log.Printf("server started on %s (/live default, /startup gated, /ready = checks)", listenPort)
 		if err := hc.StartHTTPServer(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("server error: %v", err)
 		}
