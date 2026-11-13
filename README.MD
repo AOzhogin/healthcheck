@@ -120,7 +120,8 @@ The probes are made for kubelet:
 - They are **not behind Basic Auth**, even with `WithBasicAuth` (kubelet sends no credentials).
   `WithProbeAuth()` puts them behind it again, if your probes send `httpHeaders: Authorization`.
 - They are **status-only**: GET/HEAD only (anything else gets 405), the query string is ignored, and
-  the body and `Content-Type` are dropped — custom handlers included. `/ready?body=true` returns no
+  the body, `Content-Type` and `Content-Length` are dropped — custom handlers included (other headers
+  they set pass through). `/ready?body=true` returns no
   details; those are only on `/health?body=true`.
 - `WithMiddleware` still applies to them.
 

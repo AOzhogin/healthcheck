@@ -71,12 +71,18 @@ func TestMiddlewareProbe_Head(t *testing.T) {
 
 func TestMiddlewareProbe_WriteWithoutHeader(t *testing.T) {
 	h := New()
-	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("hi")) })
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", "2")
+		_, _ = w.Write([]byte("hi"))
+	})
 	rec := httptest.NewRecorder()
 	h.MiddlewareProbe(inner).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, HandlerLive, nil))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Empty(t, rec.Body.String())
+	assert.Empty(t, rec.Header().Get("Content-Type"))
+	assert.Empty(t, rec.Header().Get("Content-Length"))
 }
 
 func TestMiddlewareProbe_HealthHandlerAsCustom(t *testing.T) {
