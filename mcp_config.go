@@ -14,6 +14,7 @@ type (
 		StatusCodes      mcpStatusCodes     `json:"status_codes"`
 		CheckStatus      mcpCheckStatus     `json:"check_status"`
 		BasicAuth        bool               `json:"basic_auth"`
+		ProbeAuth        bool               `json:"probe_auth"`
 		CustomMiddleware bool               `json:"custom_middleware"`
 		Pprof            bool               `json:"pprof"`
 		Metrics          mcpMetrics         `json:"metrics"`
@@ -96,6 +97,7 @@ func (h *healthCheck) mcpConfig() json.RawMessage {
 		StatusCodes:      mcpStatusCodes{Success: h.statusCodeSuccess, Error: h.statusCodeError},
 		CheckStatus:      mcpCheckStatus{Success: h.checkStatusSuccess, Error: h.checkStatusError},
 		BasicAuth:        h.withBasicAuth(),
+		ProbeAuth:        h.probeAuth,
 		CustomMiddleware: h.customMiddleware != nil,
 		Pprof:            h.pprofEnabled,
 		Metrics:          mcpMetrics{Enabled: h.withMetrics()},

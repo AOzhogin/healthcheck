@@ -274,3 +274,34 @@ func doRequest(t *testing.T, method, url string, mutate func(*http.Request)) (in
 	b, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(b)
 }
+
+func TestWithProbeAuth(t *testing.T) {
+	t.Run("with basic auth", func(t *testing.T) {
+		const addr = ":18306"
+		const user, pass = "admin", "secret"
+		h := New(WithHTTPAddress(addr), WithBasicAuth(user, pass), WithProbeAuth())
+		startServer(t, h)
+		base := "http://localhost" + addr
+
+		for _, ep := range []string{HandlerLive, HandlerReady, HandlerStartup} {
+			if code := getStatus(t, base+ep); code != http.StatusUnauthorized {
+				t.Errorf("%s without creds: got %d, want 401", ep, code)
+			}
+			if code, _ := doRequest(t, http.MethodGet, base+ep, func(r *http.Request) { r.SetBasicAuth(user, pass) }); code != http.StatusOK {
+				t.Errorf("%s with creds: got %d, want 200", ep, code)
+			}
+		}
+	})
+
+	t.Run("without basic auth", func(t *testing.T) {
+		const addr = ":18307"
+		h := New(WithHTTPAddress(addr), WithProbeAuth())
+		startServer(t, h)
+
+		for _, ep := range []string{HandlerLive, HandlerReady, HandlerStartup} {
+			if code := getStatus(t, "http://localhost"+addr+ep); code != http.StatusOK {
+				t.Errorf("%s: got %d, want 200", ep, code)
+			}
+		}
+	})
+}
